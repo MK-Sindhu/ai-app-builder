@@ -10,6 +10,9 @@ export function describeRequestError(error: unknown, action: string) {
   if (status === 401) {
     return "Your session has ended. Sign in again to continue.";
   }
+  if (status === 409) {
+    return "ndstill is still working on your last message. Stop it or wait for it to finish.";
+  }
   if (axios.isAxiosError(error) && !error.response) {
     return "Can't reach ndstill. Check your connection and try again.";
   }

@@ -20,8 +20,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ndstill — mobile apps from a sentence",
-  description: "Describe a mobile app in plain words. ndstill writes the React Native code and opens it in an editor you can keep changing.",
+  title: "ndstill — websites from a sentence",
+  description: "Describe a website in plain words. ndstill writes the React code, shows it live as it builds, and opens it in an editor you can keep changing.",
 };
 
 export default function RootLayout({

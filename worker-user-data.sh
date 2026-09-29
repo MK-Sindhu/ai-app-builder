@@ -33,8 +33,5 @@ docker run --rm --network host amazon/aws-cli ssm get-parameter --name /bolty/wo
 COMPOSE="docker compose --env-file apps/worker/.env -f docker-compose.worker.yml"
 $COMPOSE build
 
-# The system prompt assumes an Expo project already exists in the project folder. Create it before
-# starting the services, so the orchestrator's health check only passes once the machine is ready.
-$COMPOSE run --rm -T --no-deps worker sh -c "cd /tmp/bolty-worker && npx --yes create-expo-app@latest ."
-
+# The worker sets up the project itself (templates/website) and reports ready once it's installed
 $COMPOSE up -d

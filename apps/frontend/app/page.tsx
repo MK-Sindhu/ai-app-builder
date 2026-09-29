@@ -8,7 +8,7 @@ export default function Home() {
       <Appbar />
       <main className="mx-auto max-w-[720px] px-5 pb-24 pt-14 sm:pt-24">
         <h1 className="rise text-center font-display text-[31px] font-semibold leading-[1.06] tracking-[-0.035em] text-ink sm:text-[56px] sm:leading-[1.04] lg:text-[64px]">
-          Mobile apps,
+          Websites,
           <br />
           from a sentence.
         </h1>
@@ -16,8 +16,8 @@ export default function Home() {
           className="rise mx-auto mt-5 max-w-[540px] text-balance text-center text-[16px] leading-relaxed text-graphite sm:text-[17px]"
           style={{ "--delay": "90ms" } as CSSProperties}
         >
-          Describe your app in plain words. ndstill writes the React Native code, installs what it needs,
-          and opens it in an editor you can keep changing.
+          Describe your site in plain words. ndstill writes the React code, installs what it needs,
+          and shows it live as it builds.
         </p>
         <div className="rise mt-10" style={{ "--delay": "180ms" } as CSSProperties}>
           <Prompt />

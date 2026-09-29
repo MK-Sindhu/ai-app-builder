@@ -1,9 +1,12 @@
 import { CircleAlert } from "lucide-react";
 import type { PreviewState } from "@/hooks/usePreview";
+import { cn } from "@/lib/utils";
 import { LoadingDots } from "./LoadingDots";
 
-// The app running in a phone-sized frame. `reloadKey` changes to reload it.
-export function WebPreview({ preview, reloadKey }: { preview: PreviewState; reloadKey: number }) {
+export type Device = "desktop" | "mobile";
+
+// The site as it runs: full width for desktop, or in a phone-sized frame. `reloadKey` changes to reload it.
+export function WebPreview({ preview, device, reloadKey }: { preview: PreviewState; device: Device; reloadKey: number }) {
     if (preview.status === "starting") {
         return (
             <div className="grid flex-1 place-items-center p-8 text-center">
@@ -11,7 +14,7 @@ export function WebPreview({ preview, reloadKey }: { preview: PreviewState; relo
                     <LoadingDots />
                     <h2 className="mt-6 font-display text-[16px] font-semibold tracking-[-0.01em] text-ink">Starting the preview</h2>
                     <p className="mt-2 max-w-[340px] text-[14px] leading-relaxed text-graphite">
-                        Expo is getting your app ready. It appears here by itself, usually a minute or two after the machine is ready.
+                        Your site appears here by itself once the machine is ready, usually within a minute.
                     </p>
                 </div>
             </div>
@@ -24,7 +27,7 @@ export function WebPreview({ preview, reloadKey }: { preview: PreviewState; relo
                 <div className="flex max-w-[420px] flex-col items-center">
                     <CircleAlert className="size-6 text-destructive" />
                     <h2 className="mt-4 font-display text-[16px] font-semibold tracking-[-0.01em] text-ink">The preview stopped</h2>
-                    <p className="mt-2 text-[14px] leading-relaxed text-graphite">It restarts by itself in a few seconds. Expo said:</p>
+                    <p className="mt-2 text-[14px] leading-relaxed text-graphite">It restarts by itself in a few seconds. The dev server said:</p>
                     <code className="mt-3 w-full break-words rounded-xl bg-frost px-3 py-2 text-left font-mono text-[12.5px] text-ink">
                         {preview.error}
                     </code>
@@ -34,13 +37,19 @@ export function WebPreview({ preview, reloadKey }: { preview: PreviewState; relo
     }
 
     return (
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-frost p-6">
-            <div className="aspect-[390/844] h-full max-h-[780px] rounded-[46px] bg-ink p-[10px] shadow-[0_30px_60px_-30px_rgba(21,20,31,0.45)]">
+        <div className={cn("flex min-h-0 flex-1", device === "mobile" && "items-center justify-center overflow-hidden bg-frost p-6")}>
+            <div
+                className={cn(
+                    device === "desktop"
+                        ? "flex min-h-0 flex-1"
+                        : "aspect-[390/844] h-full max-h-[780px] rounded-[46px] bg-ink p-[10px] shadow-[0_30px_60px_-30px_rgba(21,20,31,0.45)]",
+                )}
+            >
                 <iframe
                     key={reloadKey}
                     src={preview.url}
-                    title="App preview"
-                    className="size-full rounded-[36px] bg-white"
+                    title="Site preview"
+                    className={cn("size-full bg-white", device === "mobile" && "rounded-[36px]")}
                 />
             </div>
         </div>

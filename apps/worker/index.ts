@@ -5,7 +5,7 @@ import { secretAuthMiddleware } from "common/middleware";
 import { systemPrompt } from "./systemPrompt";
 import { ArtifactProcessor } from "./parser";
 import { onFileUpdate, onShellCommand } from "./os";
-import { previewState, runPreview } from "./preview";
+import { isProjectReady, previewState, runPreview } from "./preview";
 
 const PORT = Number(process.env.PORT ?? 9091);
 // Any OpenAI-compatible API works. For Grok use LLM_BASE_URL=https://api.x.ai/v1 and a grok model.
@@ -44,14 +44,15 @@ function shouldFallBack(error: unknown): error is InstanceType<typeof OpenAI.API
     || (error instanceof OpenAI.APIError && (error.status === 404 || error.status === 429 || (error.status ?? 0) >= 500));
 }
 
-// Starts the model's reply, falling back to LLM_FALLBACK_MODEL if the main model is busy or unavailable
-async function startReply(messages: OpenAI.Chat.ChatCompletionMessageParam[]) {
+// Starts the model's reply, falling back to LLM_FALLBACK_MODEL if the main model is busy or unavailable.
+// `signal` cancels it, whether it's still waiting for the model or already streaming.
+async function startReply(messages: OpenAI.Chat.ChatCompletionMessageParam[], signal: AbortSignal) {
   const request = (client: OpenAI, model: string) => client.chat.completions.create({
     model,
     max_tokens: LLM_MAX_TOKENS,
     stream: true,
     messages,
-  });
+  }, { signal });
 
   try {
     console.log(`asking ${LLM_MODEL}`);
@@ -96,11 +97,20 @@ function describeError(error: unknown) {
 const app = express();
 app.use(express.json());
 
+// The build in progress for each project, so the user can stop it
+type Run = { stopped: boolean; controller: AbortController };
+const runs = new Map<string, Run>();
+
+// Not ready until the project's website template is installed, so the orchestrator waits before handing it out
 app.get("/health", (req, res) => {
+  if (!isProjectReady()) {
+    res.status(503).json({ status: "setting up" });
+    return;
+  }
   res.json({ status: "ok" });
 });
 
-// Whether the preview (Expo's dev server, serving the web version of the app) is up
+// Whether the preview (Vite's dev server, serving the site) is up
 app.get("/preview", secretAuthMiddleware("WORKER_SECRET"), async (req, res) => {
   res.json(await previewState());
 });
@@ -113,43 +123,82 @@ app.post("/prompt", secretAuthMiddleware("WORKER_SECRET"), async (req, res) => {
     return;
   }
 
-  await prismaClient.prompt.create({
-    data: {
-      content: prompt,
-      projectId,
-      type: "USER",
-    },
-  });
+  // One build at a time per project; two would write the same files at once
+  if (runs.has(projectId)) {
+    res.status(409).json({ message: "Still working on the last message" });
+    return;
+  }
+  const run: Run = { stopped: false, controller: new AbortController() };
+  runs.set(projectId, run);
 
-  const allPrompts = await prismaClient.prompt.findMany({
-    where: {
-      projectId,
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
-  });
+  let allPrompts;
+  try {
+    await prismaClient.prompt.create({
+      data: {
+        content: prompt,
+        projectId,
+        type: "USER",
+      },
+    });
+
+    allPrompts = await prismaClient.prompt.findMany({
+      where: {
+        projectId,
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+  } catch (error) {
+    // Don't leave the project marked as busy
+    runs.delete(projectId);
+    throw error;
+  }
 
   // The frontend polls for actions, so answer now and let the model run in the background
   res.status(202).json({ message: "Prompt accepted" });
   console.log(`prompt received for project ${projectId}`);
 
-  runPrompt(projectId, allPrompts).catch(async (error) => {
-    console.log("error", error);
-    await prismaClient.action.create({
-      data: {
-        content: `Error: ${describeError(error)}`,
-        projectId,
-      },
-    }).catch(console.error);
-  });
+  runPrompt(projectId, allPrompts, run)
+    .catch(async (error) => {
+      console.log("error", error);
+      await prismaClient.action.create({
+        data: {
+          content: `Error: ${describeError(error)}`,
+          projectId,
+        },
+      }).catch(console.error);
+    })
+    .finally(() => runs.delete(projectId));
 });
 
-async function runPrompt(projectId: string, allPrompts: { type: "USER" | "SYSTEM"; content: string }[]) {
-  // Run actions one at a time, in order, so npm install waits for package.json to be written
+// Stops the project's build. Also clears a build that was lost (e.g. the worker restarted mid-build),
+// so the chat stops waiting for it.
+app.post("/stop", secretAuthMiddleware("WORKER_SECRET"), async (req, res) => {
+  const projectId = req.body?.projectId;
+  if (typeof projectId !== "string") {
+    res.status(400).json({ message: "projectId is required" });
+    return;
+  }
+
+  const run = runs.get(projectId);
+  if (run) {
+    // runPrompt notices, finishes the step it's on, and records "Stopped"
+    run.stopped = true;
+    run.controller.abort();
+  } else {
+    await prismaClient.action.create({ data: { content: "Stopped", projectId } });
+  }
+  console.log(`stop requested for project ${projectId}`);
+  res.json({ message: "Stopped" });
+});
+
+async function runPrompt(projectId: string, allPrompts: { type: "USER" | "SYSTEM"; content: string }[], run: Run) {
+  // Run actions one at a time, in order, so npm install waits for package.json to be written.
+  // Once stopped, steps that haven't started yet are skipped.
   let queue = Promise.resolve();
   const enqueue = (task: () => Promise<void>) => {
-    queue = queue.then(task).catch((error) => console.error("action failed", error));
+    queue = queue.then(() => (run.stopped ? undefined : task())).catch((error) => console.error("action failed", error));
   };
 
   const artifactProcessor = new ArtifactProcessor(
@@ -175,47 +224,65 @@ async function runPrompt(projectId: string, allPrompts: { type: "USER" | "SYSTEM
     ),
   ];
 
-  const stream = await startReply(messages);
   const startedAt = Date.now();
   const seconds = () => Math.round((Date.now() - startedAt) / 1000);
 
-  // Give up on a reply that goes quiet, instead of waiting forever
-  let stallTimer = setTimeout(() => stream.controller.abort(), LLM_STALL_MS);
-
   // Set when the reply hit LLM_MAX_TOKENS, so the last files may be missing
   let cutOff = false;
-  let loggedThinking = false;
-  let nextProgressLog = 0;
-  for await (const chunk of stream) {
-    clearTimeout(stallTimer);
+  let stallTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const stream = await startReply(messages, run.controller.signal);
+
+    // Give up on a reply that goes quiet, instead of waiting forever
     stallTimer = setTimeout(() => stream.controller.abort(), LLM_STALL_MS);
 
-    const choice = chunk.choices[0];
-    if (choice?.finish_reason === "length") {
-      cutOff = true;
-    }
-    // Reasoning models stream their thinking separately, before the answer
-    const delta = choice?.delta as { reasoning_content?: string; reasoning?: string } | undefined;
-    if (!loggedThinking && (delta?.reasoning_content || delta?.reasoning)) {
-      console.log(`model is thinking (after ${seconds()}s)`);
-      loggedThinking = true;
-    }
-    const text = choice?.delta?.content;
-    if (!text) {
-      continue;
-    }
-    artifactProcessor.append(text);
-    parseAll();
-    artifact += text;
+    let loggedThinking = false;
+    let nextProgressLog = 0;
+    for await (const chunk of stream) {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => stream.controller.abort(), LLM_STALL_MS);
 
-    if (artifact.length >= nextProgressLog) {
-      console.log(nextProgressLog === 0 ? `model started writing (after ${seconds()}s)` : `written ${artifact.length} characters (${seconds()}s)`);
-      nextProgressLog += 5000;
+      const choice = chunk.choices[0];
+      if (choice?.finish_reason === "length") {
+        cutOff = true;
+      }
+      // Reasoning models stream their thinking separately, before the answer
+      const delta = choice?.delta as { reasoning_content?: string; reasoning?: string } | undefined;
+      if (!loggedThinking && (delta?.reasoning_content || delta?.reasoning)) {
+        console.log(`model is thinking (after ${seconds()}s)`);
+        loggedThinking = true;
+      }
+      const text = choice?.delta?.content;
+      if (!text) {
+        continue;
+      }
+      artifactProcessor.append(text);
+      parseAll();
+      artifact += text;
+
+      if (artifact.length >= nextProgressLog) {
+        console.log(nextProgressLog === 0 ? `model started writing (after ${seconds()}s)` : `written ${artifact.length} characters (${seconds()}s)`);
+        nextProgressLog += 5000;
+      }
     }
+  } catch (error) {
+    // Stopping cancels the request, which lands here; anything else is a real failure
+    if (!run.stopped) {
+      throw error;
+    }
+  } finally {
+    clearTimeout(stallTimer);
   }
-  clearTimeout(stallTimer);
 
   await queue;
+
+  // A stopped build keeps the files it already wrote, but not its half-finished reply
+  if (run.stopped) {
+    console.log(`stopped after ${seconds()}s`);
+    await prismaClient.action.create({ data: { content: "Stopped", projectId } });
+    return;
+  }
+
   console.log(cutOff ? "cut off at the length limit" : "done!");
 
   // Before the reply is saved, so the log shows the steps, then how they ended, then the reply's text

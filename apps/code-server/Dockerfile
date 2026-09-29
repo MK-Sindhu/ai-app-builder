@@ -14,7 +14,7 @@ RUN mkdir -p /tmp/bolty-worker && chown coder:coder /tmp/bolty-worker
 
 # Revert to the code-server default user
 USER coder
-# Let that user install npm packages globally (e.g. @expo/ngrok for `npx expo start --tunnel`)
+# Let that user install npm packages globally from the editor's terminal
 ENV NPM_CONFIG_PREFIX=/home/coder/.npm-global
 ENV PATH=/home/coder/.npm-global/bin:$PATH
 # Expose code-server's default port

@@ -1,5 +1,5 @@
 "use client";
-import { ArrowRight, CircleAlert, LoaderCircle, Smartphone } from "lucide-react";
+import { ArrowRight, CircleAlert, Globe, LoaderCircle } from "lucide-react";
 import axios from "axios";
 import { useEffect, useRef, useState } from "react";
 import { useAuth, useClerk } from "@clerk/nextjs";
@@ -65,7 +65,7 @@ export function Prompt() {
   return (
     <div>
       <div className="rounded-[28px] border border-hairline bg-paper p-3 shadow-[0_28px_56px_-32px_rgba(21,20,31,0.28)] transition-[border-color,box-shadow] focus-within:border-ink/20 focus-within:shadow-[0_28px_56px_-28px_rgba(21,20,31,0.36)]">
-        <label htmlFor="prompt" className="sr-only">Describe your app</label>
+        <label htmlFor="prompt" className="sr-only">Describe your site</label>
         <textarea
           id="prompt"
           ref={textareaRef}
@@ -78,13 +78,13 @@ export function Prompt() {
             }
           }}
           rows={3}
-          placeholder="An app that counts the glasses of water I drink and reminds me every two hours"
+          placeholder="A landing page for my coffee shop with the menu and opening hours"
           className="field-sizing-content block max-h-[280px] min-h-[104px] w-full resize-none bg-transparent px-3 pt-2 text-[17px] leading-relaxed text-ink outline-none placeholder:text-graphite/70"
         />
         <div className="flex items-center justify-between gap-3 pl-2 pt-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-frost px-3 py-1.5 text-[12.5px] font-medium text-graphite">
-            <Smartphone className="size-3.5" />
-            React Native · Expo
+            <Globe className="size-3.5" />
+            React · Tailwind
           </span>
           <div className="flex items-center gap-3">
             <kbd className="hidden font-sans text-[12px] text-graphite/80 sm:inline">{isMac ? "⌘" : "Ctrl"} ↵</kbd>

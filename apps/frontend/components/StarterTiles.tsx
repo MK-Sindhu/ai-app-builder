@@ -1,4 +1,4 @@
-import { CookingPot, Crown, Droplet, Dumbbell, Flame, Layers, NotebookPen, Receipt, type LucideIcon } from "lucide-react";
+import { Briefcase, CalendarDays, Coffee, LayoutDashboard, PenLine, Rocket, ShoppingBag, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import { tileBackground } from "./Brand";
 
 type Starter = {
@@ -9,17 +9,17 @@ type Starter = {
 };
 
 const STARTERS: Starter[] = [
-  { label: "Habits", color: "#ff5b3a", icon: Flame, prompt: "A habit tracker where I add daily habits, tick them off each day, and see my current streak for each one." },
-  { label: "Water", color: "#2e8bff", icon: Droplet, prompt: "An app that counts the glasses of water I drink each day, with a daily goal and a chart of the last seven days." },
-  { label: "Split bill", color: "#1db67a", icon: Receipt, prompt: "An app to split a restaurant bill: enter the total, the tip, and the people, and it shows what each person owes." },
-  { label: "Recipes", color: "#ffb020", icon: CookingPot, prompt: "A recipe box where I save recipes with ingredients and steps, and search them by name or ingredient." },
-  { label: "Workouts", color: "#f0487d", icon: Dumbbell, prompt: "A workout log where I record exercises, sets, reps, and weight, and see my progress for each exercise over time." },
-  { label: "Flashcards", color: "#8b5cf6", icon: Layers, prompt: "A flashcard app where I make decks, flip through cards, and mark which ones I got right so I can review the rest." },
-  { label: "Chess", color: "#15141f", icon: Crown, prompt: "A two-player chess game on one phone that only allows legal moves and shows whose turn it is." },
-  { label: "Journal", color: "#12b5a6", icon: NotebookPen, prompt: "A daily journal with a mood picker for each entry and a calendar that shows the mood of past days." },
+  { label: "Portfolio", color: "#ff5b3a", icon: Briefcase, prompt: "A personal portfolio with a short intro, a grid of my projects with links, and a contact form." },
+  { label: "Café", color: "#ffb020", icon: Coffee, prompt: "A landing page for a coffee shop with a big hero photo, the menu with prices, and opening hours." },
+  { label: "Store", color: "#1db67a", icon: ShoppingBag, prompt: "A small online store with a product grid, a page for each product, and a cart that remembers what I added." },
+  { label: "Event", color: "#2e8bff", icon: CalendarDays, prompt: "A page for a one-day conference with the schedule, the speakers, and a sign-up form." },
+  { label: "Blog", color: "#8b5cf6", icon: PenLine, prompt: "A blog with a list of posts, a page for each post, and tags to filter posts by topic." },
+  { label: "Dashboard", color: "#15141f", icon: LayoutDashboard, prompt: "A sales dashboard with summary cards, a revenue chart for the last 30 days, and a table of recent orders." },
+  { label: "Launch", color: "#f0487d", icon: Rocket, prompt: "A launch page for a new app with a hero, a features section, three pricing plans, and FAQs." },
+  { label: "Recipes", color: "#12b5a6", icon: UtensilsCrossed, prompt: "A recipe site where I can browse recipes, search by ingredient, and save favourites." },
 ];
 
-// Starter ideas laid out like apps on a home screen. Picking one fills in the prompt.
+// Starter ideas as a row of colourful tiles. Picking one fills in the prompt.
 export function StarterTiles({ onSelect }: { onSelect: (prompt: string) => void }) {
   return (
     <div>

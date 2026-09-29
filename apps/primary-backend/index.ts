@@ -176,11 +176,49 @@ app.post("/prompt", authMiddleware, async (req, res) => {
     body: JSON.stringify({ prompt, projectId }),
     signal: AbortSignal.timeout(10_000),
   });
+  // The worker is still building the last message
+  if (response.status === 409) {
+    res.status(409).json({ message: "Still working on the last message" });
+    return;
+  }
   if (!response.ok) {
     throw new Error(`Worker returned ${response.status}`);
   }
 
   res.status(202).json({ message: "Prompt accepted" });
+});
+
+// Stops the build in progress on this project's machine
+app.post("/project/:projectId/stop", authMiddleware, async (req, res) => {
+  const userId = req.userId!;
+  const projectId = String(req.params.projectId);
+
+  if (!(await findUserProject(projectId, userId))) {
+    res.status(404).json({ message: "Project not found" });
+    return;
+  }
+
+  const machine = await getMachine(projectId, true);
+  if (!machine) {
+    // No machine means nothing is running. Record that, so the chat stops waiting.
+    await prismaClient.action.create({ data: { content: "Stopped", projectId } });
+    res.json({ message: "Stopped" });
+    return;
+  }
+
+  const response = await fetch(`http://${workerHost(machine)}:${WORKER_PORT}/stop`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.WORKER_SECRET}`,
+    },
+    body: JSON.stringify({ projectId }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Worker returned ${response.status}`);
+  }
+  res.json({ message: "Stopped" });
 });
 
 // Where the frontend loads code-server for this project
@@ -219,10 +257,34 @@ app.post("/project/:projectId/close", authMiddleware, async (req, res) => {
     return;
   }
 
+  await releaseMachine(projectId);
+  res.json({ message: "Project closed" });
+});
+
+// Deletes the project and its chat for good, freeing its machine first
+app.delete("/project/:projectId", authMiddleware, async (req, res) => {
+  const userId = req.userId!;
+  const projectId = String(req.params.projectId);
+
+  if (!(await findUserProject(projectId, userId))) {
+    res.status(404).json({ message: "Project not found" });
+    return;
+  }
+
+  await releaseMachine(projectId);
+  // Messages and steps first: they point at the project
+  await prismaClient.$transaction([
+    prismaClient.action.deleteMany({ where: { projectId } }),
+    prismaClient.prompt.deleteMany({ where: { projectId } }),
+    prismaClient.project.delete({ where: { id: projectId } }),
+  ]);
+  res.json({ message: "Project deleted" });
+});
+
+// Terminates the project's machine, if it has one
+async function releaseMachine(projectId: string) {
   const machine = await getMachine(projectId, true);
   if (!machine) {
-    // Already released
-    res.json({ message: "Project closed" });
     return;
   }
 
@@ -238,8 +300,7 @@ app.post("/project/:projectId/close", authMiddleware, async (req, res) => {
   if (!response.ok) {
     throw new Error(`Orchestrator returned ${response.status}`);
   }
-  res.json({ message: "Project closed" });
-});
+}
 
 // The preview on this project's machine: "starting", "failed", or "ready" with its address
 app.get("/project/:projectId/preview", authMiddleware, async (req, res) => {

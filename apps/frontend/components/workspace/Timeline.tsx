@@ -1,4 +1,4 @@
-import { CircleCheck, CircleSlash, CircleX, FilePen, LoaderCircle, Play, SquareTerminal, TriangleAlert, type LucideIcon } from "lucide-react";
+import { CircleCheck, CircleSlash, CircleStop, CircleX, FilePen, LoaderCircle, Play, RotateCw, SquareTerminal, TriangleAlert, type LucideIcon } from "lucide-react";
 import type { Action } from "@/hooks/useActions";
 import type { Prompt } from "@/hooks/usePrompts";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,9 @@ function toStep(content: string): Step {
     if (content === "Done!") {
         return { icon: CircleCheck, verb: "Done", detail: "", tone: "done" };
     }
+    if (content === "Stopped") {
+        return { icon: CircleStop, verb: "Stopped", detail: "", tone: "plain" };
+    }
     if (content.startsWith("Error:")) {
         return { icon: TriangleAlert, verb: content.slice("Error:".length).trim(), detail: "", tone: "failed" };
     }
@@ -22,7 +25,7 @@ function toStep(content: string): Step {
         ["Updated file ", FilePen, "Wrote", "plain"],
         ["Ran command: ", SquareTerminal, "Ran", "plain"],
         ["Started command: ", Play, "Started", "plain"],
-        // Dev server commands; the phone preview already runs one
+        // Dev server commands; the preview already runs one
         ["Skipped command: ", CircleSlash, "Skipped", "plain"],
         ["Command failed: ", CircleX, "Failed", "failed"],
     ];
@@ -75,18 +78,35 @@ function toBlocks(prompts: Prompt[], actions: Action[]): Block[] {
     return blocks;
 }
 
-// Still working when your latest message came after the last "Done" or error
+// How a build ends: done, failed, or stopped
+function isFinish(action: Action) {
+    return action.content === "Done!" || action.content === "Stopped" || action.content.startsWith("Error:");
+}
+
+// Still working when your latest message came after the last build ended
 export function isWorking(prompts: Prompt[], actions: Action[]) {
     const lastMessage = Math.max(0, ...prompts.filter((p) => p.type === "USER").map((p) => Date.parse(p.createdAt)));
-    const lastFinish = Math.max(0, ...actions
-        .filter((a) => a.content === "Done!" || a.content.startsWith("Error:"))
-        .map((a) => Date.parse(a.createdAt)));
+    const lastFinish = Math.max(0, ...actions.filter(isFinish).map((a) => Date.parse(a.createdAt)));
     return lastMessage > lastFinish;
 }
 
-export function Timeline({ prompts, actions, pendingMessage }: { prompts: Prompt[]; actions: Action[]; pendingMessage: string | null }) {
+// The last build failed or was stopped, so resending the last message may help
+export function lastBuildFailed(actions: Action[]) {
+    const finishes = actions.filter(isFinish).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    const last = finishes[finishes.length - 1];
+    return last !== undefined && last.content !== "Done!";
+}
+
+export function Timeline({ prompts, actions, pendingMessage, working, stopping, onRetry }: {
+    prompts: Prompt[];
+    actions: Action[];
+    pendingMessage: string | null;
+    working: boolean;
+    stopping: boolean;
+    // Set when the last build failed or was stopped
+    onRetry?: () => void;
+}) {
     const blocks = toBlocks(prompts, actions);
-    const working = pendingMessage !== null || isWorking(prompts, actions);
 
     if (blocks.length === 0 && pendingMessage === null) {
         return (
@@ -150,7 +170,20 @@ export function Timeline({ prompts, actions, pendingMessage }: { prompts: Prompt
             {working && (
                 <li className="flex items-center gap-2 px-1 text-[13px] text-graphite">
                     <LoaderCircle className="size-3.5 animate-spin" />
-                    Writing code…
+                    {stopping ? "Stopping…" : "Writing code…"}
+                </li>
+            )}
+
+            {onRetry && (
+                <li className="px-1">
+                    <button
+                        type="button"
+                        onClick={onRetry}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-hairline bg-paper px-3 text-[13px] font-medium text-ink outline-none transition-colors hover:border-ink/20 focus-visible:ring-2 focus-visible:ring-ink/30"
+                    >
+                        <RotateCw className="size-3.5" />
+                        Retry
+                    </button>
                 </li>
             )}
         </ol>

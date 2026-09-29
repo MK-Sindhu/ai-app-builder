@@ -9,7 +9,7 @@ Browser ──HTTPS──> code.ndstill.com/<projectId>/  │ control server: Ca
 Browser ──HTTPS──> <projectId>.preview.ndstill.com ┘
                                                      ├──> backend ──> orchestrator ──> auto scaling group
                                                      │       └──> worker on the project's machine (:9091)
-                                                     └──> code-server (:8080) or the Expo preview (:8081) on the
+                                                     └──> code-server (:8080) or the site preview (:8081) on the
                                                           project's machine, after the backend checks the user owns it
 ```
 
@@ -151,8 +151,8 @@ credentials in production.
 
 ## Previews
 
-Each project's preview is `https://<projectId>.preview.ndstill.com`: the web version of the app, served by
-Expo's dev server on the project's machine. Caddy gets each preview host's certificate the first time it's
+Each project's preview is `https://<projectId>.preview.ndstill.com`: the site, served by
+Vite's dev server on the project's machine. Caddy gets each preview host's certificate the first time it's
 opened. Let's Encrypt allows about 50 new certificates a week for the domain, which is plenty for a few users.
 
 ## Before real users

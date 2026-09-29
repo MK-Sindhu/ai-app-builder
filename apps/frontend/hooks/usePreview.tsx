@@ -12,7 +12,7 @@ export type PreviewState =
 const STARTING_MS = 5000;
 const READY_MS = 30_000;
 
-// The project's preview: the web version of the app, served by Expo's dev server on its machine
+// The project's preview: the site, served by Vite's dev server on its machine
 export function usePreview(projectId: string) {
     const [preview, setPreview] = useState<PreviewState>({ status: "starting" });
     const { getToken } = useAuth();

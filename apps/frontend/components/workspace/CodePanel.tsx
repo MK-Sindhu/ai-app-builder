@@ -1,16 +1,21 @@
 "use client";
-import { ExternalLink, RotateCw } from "lucide-react";
+import { ExternalLink, Monitor, RotateCw, Smartphone } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { usePreview } from "@/hooks/usePreview";
 import { LoadingDots } from "./LoadingDots";
-import { WebPreview } from "./WebPreview";
+import { WebPreview, type Device } from "./WebPreview";
 
 type Tab = "code" | "preview";
 
 const TABS: { id: Tab; label: string }[] = [
-    { id: "code", label: "Code" },
     { id: "preview", label: "Preview" },
+    { id: "code", label: "Code" },
+];
+
+const DEVICES: { id: Device; label: string; icon: typeof Monitor }[] = [
+    { id: "desktop", label: "Desktop", icon: Monitor },
+    { id: "mobile", label: "Mobile", icon: Smartphone },
 ];
 
 // A router URL without its one-time sign-in token. Once the page has loaded here, the browser has the
@@ -29,7 +34,9 @@ const toolbarLink =
     "inline-flex items-center gap-1.5 rounded-md px-1 text-[13px] font-medium text-graphite outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ink/30";
 
 export function CodePanel({ projectId, url }: { projectId: string; url: string | null }) {
-    const [tab, setTab] = useState<Tab>("code");
+    // The site is what people come for, so it shows first
+    const [tab, setTab] = useState<Tab>("preview");
+    const [device, setDevice] = useState<Device>("desktop");
     const [previewReloads, setPreviewReloads] = useState(0);
     const preview = usePreview(projectId);
 
@@ -68,6 +75,27 @@ export function CodePanel({ projectId, url }: { projectId: string; url: string |
                     </div>
 
                     <div className="flex items-center gap-3">
+                        {tab === "preview" && previewUrl && (
+                            <div role="radiogroup" aria-label="Preview size" className="inline-flex rounded-full bg-frost p-0.5">
+                                {DEVICES.map(({ id, label, icon: Icon }) => (
+                                    <button
+                                        key={id}
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={device === id}
+                                        aria-label={label}
+                                        title={label}
+                                        onClick={() => setDevice(id)}
+                                        className={cn(
+                                            "grid size-7 place-items-center rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink/30",
+                                            device === id ? "bg-paper text-ink shadow-[0_1px_2px_rgba(21,20,31,0.08)]" : "text-graphite hover:text-ink",
+                                        )}
+                                    >
+                                        <Icon className="size-3.5" />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         {tab === "preview" && previewUrl && (
                             <button type="button" onClick={() => setPreviewReloads((n) => n + 1)} className={toolbarLink}>
                                 <RotateCw className="size-3.5" />
@@ -114,7 +142,7 @@ export function CodePanel({ projectId, url }: { projectId: string; url: string |
 
                 {/* Also kept loaded, so the app keeps its state while you look at the code */}
                 <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "preview" && "hidden")}>
-                    <WebPreview preview={preview} reloadKey={previewReloads} />
+                    <WebPreview preview={preview} device={device} reloadKey={previewReloads} />
                 </div>
             </div>
         </section>

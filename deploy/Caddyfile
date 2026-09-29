@@ -42,7 +42,7 @@ code.{$DOMAIN} {
 	}
 }
 
-# <projectId>.preview.<domain> is that project's app, served by Expo's dev server on its machine
+# <projectId>.preview.<domain> is that project's site, served by Vite's dev server on its machine
 *.preview.{$DOMAIN} {
 	tls {
 		on_demand
@@ -55,7 +55,7 @@ code.{$DOMAIN} {
 			copy_headers X-Machine
 		}
 		reverse_proxy {http.request.header.X-Machine} {
-			# Expo's dev server only trusts requests that look like they come from localhost
+			# Vite's dev server only accepts requests addressed to localhost
 			header_up Host localhost:8081
 			header_up Origin http://localhost:8081
 		}

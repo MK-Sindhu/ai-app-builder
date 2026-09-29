@@ -12,7 +12,9 @@ import axios from "axios";
 import { useAuth } from "@clerk/nextjs";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PanelLeft, Plus, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CircleAlert, LoaderCircle, PanelLeft, Plus, Search, Trash2 } from "lucide-react";
+import { describeRequestError } from "@/lib/errors";
 import { ProjectTile } from "./Brand";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +56,7 @@ function useProjects(open: boolean) {
         };
     }, [open]);
 
-    return projects;
+    return [projects, setProjects] as const;
 }
 
 function dayLabel(date: Date) {
@@ -76,8 +78,38 @@ function dayLabel(date: Date) {
 }
 
 export function ProjectsDrawer({ open, onOpenChange, currentProjectId }: { open: boolean; onOpenChange: (open: boolean) => void; currentProjectId?: string }) {
-    const projects = useProjects(open);
+    const [projects, setProjects] = useProjects(open);
     const [search, setSearch] = useState("");
+    // The project whose delete button was clicked, waiting for confirmation
+    const [confirmingId, setConfirmingId] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState("");
+    const { getToken } = useAuth();
+    const router = useRouter();
+
+    async function deleteProject(projectId: string) {
+        setDeleting(true);
+        setDeleteError("");
+        try {
+            const token = await getToken();
+            await axios.delete(`${BACKEND_URL}/project/${projectId}`, {
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
+            });
+            setProjects((current) => current?.filter((project) => project.id !== projectId) ?? null);
+            setConfirmingId(null);
+            // Don't leave the user on a page for a project that no longer exists
+            if (projectId === currentProjectId) {
+                onOpenChange(false);
+                router.push("/");
+            }
+        } catch (e) {
+            setDeleteError(describeRequestError(e, "delete the project"));
+        } finally {
+            setDeleting(false);
+        }
+    }
 
     // Projects that match the search, grouped by the day they were created
     const groups = useMemo(() => {
@@ -134,19 +166,67 @@ export function ProjectsDrawer({ open, onOpenChange, currentProjectId }: { open:
                                 <h3 className="px-2 pb-1.5 text-[12px] font-medium text-graphite">{label}</h3>
                                 <ul>
                                     {items.map((project) => (
-                                        <li key={project.id}>
-                                            <Link
-                                                href={`/project/${project.id}`}
-                                                onClick={() => onOpenChange(false)}
-                                                aria-current={project.id === currentProjectId ? "page" : undefined}
-                                                className={cn(
-                                                    "flex items-center gap-3 rounded-xl px-2 py-2 text-[14px] text-ink outline-none hover:bg-paper focus-visible:ring-2 focus-visible:ring-ink/30",
-                                                    project.id === currentProjectId && "bg-paper shadow-[0_1px_2px_rgba(21,20,31,0.06)]",
-                                                )}
-                                            >
-                                                <ProjectTile projectId={project.id} className="size-7 rounded-[8px]" />
-                                                <span className="truncate">{project.description || "Untitled project"}</span>
-                                            </Link>
+                                        <li key={project.id} className="group relative">
+                                            {confirmingId === project.id ? (
+                                                <div className="rounded-xl bg-paper px-3 py-2.5 shadow-[0_1px_2px_rgba(21,20,31,0.06)]">
+                                                    <p className="text-[13px] leading-snug text-ink">Delete this project and its chat? This can&apos;t be undone.</p>
+                                                    {deleteError && (
+                                                        <p role="alert" className="mt-1.5 flex items-start gap-1.5 text-[12.5px] leading-snug text-destructive">
+                                                            <CircleAlert className="mt-px size-3.5 shrink-0" />
+                                                            {deleteError}
+                                                        </p>
+                                                    )}
+                                                    <div className="mt-2 flex justify-end gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setConfirmingId(null);
+                                                                setDeleteError("");
+                                                            }}
+                                                            disabled={deleting}
+                                                            className="h-7 rounded-full px-3 text-[12.5px] font-medium text-graphite outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-ink/30 disabled:opacity-40"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => deleteProject(project.id)}
+                                                            disabled={deleting}
+                                                            className="inline-flex h-7 items-center gap-1.5 rounded-full bg-destructive px-3 text-[12.5px] font-medium text-white outline-none hover:bg-destructive/90 focus-visible:ring-2 focus-visible:ring-destructive/30 disabled:opacity-60"
+                                                        >
+                                                            {deleting && <LoaderCircle className="size-3.5 animate-spin" />}
+                                                            {deleting ? "Deleting" : "Delete"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <Link
+                                                        href={`/project/${project.id}`}
+                                                        onClick={() => onOpenChange(false)}
+                                                        aria-current={project.id === currentProjectId ? "page" : undefined}
+                                                        className={cn(
+                                                            "flex items-center gap-3 rounded-xl py-2 pl-2 pr-10 text-[14px] text-ink outline-none hover:bg-paper focus-visible:ring-2 focus-visible:ring-ink/30",
+                                                            project.id === currentProjectId && "bg-paper shadow-[0_1px_2px_rgba(21,20,31,0.06)]",
+                                                        )}
+                                                    >
+                                                        <ProjectTile projectId={project.id} className="size-7 rounded-[8px]" />
+                                                        <span className="truncate">{project.description || "Untitled project"}</span>
+                                                    </Link>
+                                                    {/* With a mouse it appears on hover; on touch screens it's always there */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setConfirmingId(project.id);
+                                                            setDeleteError("");
+                                                        }}
+                                                        aria-label={`Delete ${project.description || "untitled project"}`}
+                                                        className="absolute right-1.5 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-lg text-graphite outline-none transition hover:bg-frost hover:text-destructive focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ink/30 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100"
+                                                    >
+                                                        <Trash2 className="size-4" />
+                                                    </button>
+                                                </>
+                                            )}
                                         </li>
                                     ))}
                                 </ul>
