@@ -34,12 +34,22 @@ function toStep(content: string): Step {
 
 type Block =
     | { kind: "message"; id: string; text: string }
+    | { kind: "reply"; id: string; text: string }
     | { kind: "steps"; id: string; steps: (Step & { id: string })[] };
 
-// Your messages and the worker's steps in the order they happened, with consecutive steps grouped
+// The model's reply without the code it wrote, which the steps already show. Empty if it only wrote code.
+function replyText(content: string) {
+    return content.replace(/<boltArtifact[\s\S]*?(<\/boltArtifact>|$)/g, "").trim();
+}
+
+// Your messages, the model's replies, and the worker's steps in the order they happened,
+// with consecutive steps grouped
 function toBlocks(prompts: Prompt[], actions: Action[]): Block[] {
     const events = [
         ...prompts.filter((p) => p.type === "USER").map((p) => ({ at: Date.parse(p.createdAt), id: p.id, message: p.content })),
+        ...prompts
+            .filter((p) => p.type === "SYSTEM" && replyText(p.content))
+            .map((p) => ({ at: Date.parse(p.createdAt), id: p.id, reply: replyText(p.content) })),
         ...actions.map((a) => ({ at: Date.parse(a.createdAt), id: a.id, step: toStep(a.content) })),
     ].sort((a, b) => a.at - b.at);
 
@@ -47,6 +57,10 @@ function toBlocks(prompts: Prompt[], actions: Action[]): Block[] {
     for (const event of events) {
         if ("message" in event) {
             blocks.push({ kind: "message", id: event.id, text: event.message });
+            continue;
+        }
+        if ("reply" in event) {
+            blocks.push({ kind: "reply", id: event.id, text: event.reply });
             continue;
         }
         const last = blocks[blocks.length - 1];
@@ -88,6 +102,12 @@ export function Timeline({ prompts, actions, pendingMessage }: { prompts: Prompt
                 block.kind === "message" ? (
                     <li key={block.id} className="flex justify-end">
                         <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-[14px] leading-relaxed text-white">
+                            {block.text}
+                        </p>
+                    </li>
+                ) : block.kind === "reply" ? (
+                    <li key={block.id}>
+                        <p className="max-w-[92%] whitespace-pre-wrap px-1 text-[14px] leading-relaxed text-ink">
                             {block.text}
                         </p>
                     </li>

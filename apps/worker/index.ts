@@ -10,8 +10,56 @@ const PORT = Number(process.env.PORT ?? 9091);
 // Any OpenAI-compatible API works. For Grok use LLM_BASE_URL=https://api.x.ai/v1 and a grok model.
 const LLM_BASE_URL = process.env.LLM_BASE_URL ?? "https://api.deepseek.com";
 const LLM_MODEL = process.env.LLM_MODEL ?? "deepseek-v4-pro";
+// Tried once when the main model is overloaded or rate-limited, e.g. gemini-2.5-flash
+const LLM_FALLBACK_MODEL = process.env.LLM_FALLBACK_MODEL;
+// A whole app is many files. Too low and replies stop partway through.
+const LLM_MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS ?? 32000);
 
-const llm = new OpenAI({ apiKey: process.env.LLM_API_KEY, baseURL: LLM_BASE_URL });
+// Retries overloaded (5xx) and rate-limited (429) requests with backoff before giving up
+const llm = new OpenAI({ apiKey: process.env.LLM_API_KEY, baseURL: LLM_BASE_URL, maxRetries: 4 });
+
+function isBusy(error: unknown): error is InstanceType<typeof OpenAI.APIError> {
+  return error instanceof OpenAI.APIError && (error.status === 429 || (error.status ?? 0) >= 500);
+}
+
+// Starts the model's reply, falling back to LLM_FALLBACK_MODEL if the main model is busy even after retries
+async function startReply(messages: OpenAI.Chat.ChatCompletionMessageParam[]) {
+  const request = (model: string) => llm.chat.completions.create({
+    model,
+    max_tokens: LLM_MAX_TOKENS,
+    stream: true,
+    messages,
+  });
+
+  try {
+    return await request(LLM_MODEL);
+  } catch (error) {
+    if (LLM_FALLBACK_MODEL && isBusy(error)) {
+      console.log(`${LLM_MODEL} is unavailable (${error.status}), using ${LLM_FALLBACK_MODEL}`);
+      return await request(LLM_FALLBACK_MODEL);
+    }
+    throw error;
+  }
+}
+
+// What the user sees in the build log when a build fails
+function describeError(error: unknown) {
+  if (error instanceof OpenAI.APIError) {
+    if (error.status === 429) {
+      return "The AI model's usage limit was reached. Wait a minute, then send your message again.";
+    }
+    if ((error.status ?? 0) >= 500) {
+      return "The AI model is overloaded right now. Wait a moment, then send your message again.";
+    }
+    if (error.status === 401 || error.status === 403) {
+      return "The AI model rejected the API key. Check LLM_API_KEY on the worker.";
+    }
+    if (error.status === 404) {
+      return "The AI model wasn't found. Check LLM_MODEL on the worker.";
+    }
+  }
+  return "Something went wrong while building. Send your message again.";
+}
 
 const app = express();
 app.use(express.json());
@@ -52,7 +100,7 @@ app.post("/prompt", secretAuthMiddleware("WORKER_SECRET"), async (req, res) => {
     console.log("error", error);
     await prismaClient.action.create({
       data: {
-        content: "Error: the model request failed, please try again",
+        content: `Error: ${describeError(error)}`,
         projectId,
       },
     }).catch(console.error);
@@ -89,15 +137,16 @@ async function runPrompt(projectId: string, allPrompts: { type: "USER" | "SYSTEM
     ),
   ];
 
-  const stream = await llm.chat.completions.create({
-    model: LLM_MODEL,
-    max_tokens: 8000,
-    stream: true,
-    messages,
-  });
+  const stream = await startReply(messages);
 
+  // Set when the reply hit LLM_MAX_TOKENS, so the last files may be missing
+  let cutOff = false;
   for await (const chunk of stream) {
-    const text = chunk.choices[0]?.delta?.content;
+    const choice = chunk.choices[0];
+    if (choice?.finish_reason === "length") {
+      cutOff = true;
+    }
+    const text = choice?.delta?.content;
     if (!text) {
       continue;
     }
@@ -107,20 +156,23 @@ async function runPrompt(projectId: string, allPrompts: { type: "USER" | "SYSTEM
   }
 
   await queue;
-  console.log("done!");
+  console.log(cutOff ? "cut off at the length limit" : "done!");
+
+  // Before the reply is saved, so the log shows the steps, then how they ended, then the reply's text
+  await prismaClient.action.create({
+    data: {
+      content: cutOff
+        ? "Error: The reply hit its length limit, so some files may be missing. Raise LLM_MAX_TOKENS on the worker, then ask again."
+        : "Done!",
+      projectId,
+    },
+  });
 
   await prismaClient.prompt.create({
     data: {
       content: artifact,
       projectId,
       type: "SYSTEM",
-    },
-  });
-
-  await prismaClient.action.create({
-    data: {
-      content: "Done!",
-      projectId,
     },
   });
 }
