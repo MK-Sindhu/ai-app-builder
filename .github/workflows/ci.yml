@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bun run generate
+        working-directory: packages/db
+
+      - name: Type check
+        run: bun run check-types
+
+      - name: Worker tests
+        run: bun test
+        working-directory: apps/worker
+
+      - name: Orchestrator type check
+        run: bun install --frozen-lockfile && bun run check-types
+        working-directory: worker-orchestrator
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -f apps/primary-backend/Dockerfile -t primary-backend .
+      - run: docker build -f apps/worker/Dockerfile -t worker .
+      - run: docker build -t worker-orchestrator worker-orchestrator
+      - run: docker build -t code-server apps/code-server

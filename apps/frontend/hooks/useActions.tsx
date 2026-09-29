@@ -14,6 +14,10 @@ export function useActions(projectId: string) {
     const { getToken } = useAuth();
     useEffect(() => {
         async function getactions() {
+            // Don't poll while the tab is in the background
+            if (document.hidden) {
+                return;
+            }
             const token = await getToken();
             axios.get(`${BACKEND_URL}/actions/${projectId}`, {
                 headers: {
@@ -21,12 +25,12 @@ export function useActions(projectId: string) {
                 }
             }).then((res) => {
                 setactions(res.data.actions);
-            });
+            }).catch(() => {});
         }
         getactions();
-        let interval = setInterval(getactions, 1000);
+        let interval = setInterval(getactions, 3000);
         return () => clearInterval(interval);
-    }, []);
+    }, [projectId]);
 
     return {
         actions,

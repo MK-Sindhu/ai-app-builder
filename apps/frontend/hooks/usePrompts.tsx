@@ -16,6 +16,10 @@ export function usePrompts(projectId: string) {
 
     useEffect(() => {
         async function getPrompts() {
+            // Don't poll while the tab is in the background
+            if (document.hidden) {
+                return;
+            }
             const token = await getToken();
             axios.get(`${BACKEND_URL}/prompts/${projectId}`, {
                 headers: {
@@ -23,12 +27,12 @@ export function usePrompts(projectId: string) {
                 }
             }).then((res) => {
                 setPrompts(res.data.prompts);
-            });
+            }).catch(() => {});
         }
         getPrompts();
-        let interval = setInterval(getPrompts, 1000);
+        let interval = setInterval(getPrompts, 3000);
         return () => clearInterval(interval);
-    }, []);
+    }, [projectId]);
 
     return {
         prompts,

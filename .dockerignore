@@ -1,0 +1,10 @@
+**/node_modules
+**/.next
+**/.turbo
+**/.env
+**/.env.*
+!**/.env.example
+.git
+.github
+# Built separately from its own folder
+worker-orchestrator

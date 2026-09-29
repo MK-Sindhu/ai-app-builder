@@ -1,0 +1,28 @@
+# What each machine in the auto scaling group runs: the worker and code-server,
+# sharing the project folder. Start it from the launch template's user data with:
+#   docker compose --env-file apps/worker/.env -f docker-compose.worker.yml up -d --build
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    env_file: apps/worker/.env
+    ports:
+      - "9091:9091"
+    volumes:
+      - project:/tmp/bolty-worker
+    restart: unless-stopped
+
+  code-server:
+    build: apps/code-server
+    # Only the password. The worker's secrets must not reach code-server, where the user has a terminal.
+    environment:
+      PASSWORD: ${CODE_SERVER_PASSWORD:?set CODE_SERVER_PASSWORD in apps/worker/.env}
+    ports:
+      - "8080:8080"
+    volumes:
+      - project:/tmp/bolty-worker
+    restart: unless-stopped
+
+volumes:
+  project:

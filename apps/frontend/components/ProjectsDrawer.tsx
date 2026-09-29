@@ -15,7 +15,6 @@ import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "./ui/input";
-import { MATCHED_PATH_HEADER } from "next/dist/lib/constants";
 import { LogOutIcon, MessageCircleIcon, MessageSquareIcon, SearchIcon } from "lucide-react";
 import { Button } from "./ui/button";
  
@@ -23,7 +22,7 @@ const WIDTH = 250;
 
 type Project = {
     id: string;
-    description: string;
+    description: string | null;
     createdAt: string;
 }
 
@@ -96,7 +95,7 @@ export function ProjectsDrawer() {
                 {Object.keys(projects).map((date) => (
                     <div key={date}>
                         <h2 className="text-[10px]">{date}</h2>
-                        {projects[date].filter((project) => project.description.toLowerCase().includes(searchString.toLowerCase())).map((project) => (
+                        {projects[date].filter((project) => (project.description ?? "").toLowerCase().includes(searchString.toLowerCase())).map((project) => (
                             <div key={project.id} className="my-1">
                                 <Button variant={"outline"} onClick={() => {
                                     router.push(`/project/${project.id}`);

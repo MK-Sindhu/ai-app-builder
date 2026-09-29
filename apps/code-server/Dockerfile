@@ -8,10 +8,14 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Shared with the worker container, which writes the project files here.
+# coder has uid 1000, the same as the worker's bun user, so both can edit the files.
+RUN mkdir -p /tmp/bolty-worker && chown coder:coder /tmp/bolty-worker
+
 # Revert to the code-server default user
 USER coder
 # Expose code-server's default port
 EXPOSE 8080
 
-# Start code-server on container launch
-CMD ["code-server", "--auth", "none", "--bind-addr", "0.0.0.0:8080", "/tmp/bolty-worker"]
+# Start code-server on container launch. The login password comes from the PASSWORD env var.
+CMD ["code-server", "--auth", "password", "--bind-addr", "0.0.0.0:8080", "/tmp/bolty-worker"]

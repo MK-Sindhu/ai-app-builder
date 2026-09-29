@@ -5,6 +5,11 @@
   "exports": {
     "./client": "./index.ts"
   },
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate:deploy": "prisma migrate deploy",
+    "check-types": "tsc --noEmit"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
