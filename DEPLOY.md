@@ -73,31 +73,26 @@ and AWS refuses to release a machine if that would take the group below `MinSize
 ## 5. Worker machines (launch template user data)
 
 Each machine runs `docker-compose.worker.yml`: the worker and code-server sharing `/tmp/bolty-worker`.
-A starting point for Amazon Linux 2023:
+The launch template's user data is [worker-user-data.sh](worker-user-data.sh). It only needs Docker on the
+image, and logs to `/var/log/bolty-setup.log` on the machine.
+
+Before machines can boot with it:
 
 ```bash
-#!/bin/bash
-dnf install -y docker git
-systemctl enable --now docker
-mkdir -p /usr/local/lib/docker/cli-plugins
-curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
-  -o /usr/local/lib/docker/cli-plugins/docker-compose
-chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+# The worker's .env, which the script reads at boot
+aws ssm put-parameter --name /bolty/worker-env --type SecureString --value file://apps/worker/.env --region eu-north-1
 
-git clone https://github.com/MK-Sindhu/ai-app-builder.git /opt/bolty
-cd /opt/bolty
-# The worker's .env, stored once with:
-#   aws ssm put-parameter --name /bolty/worker-env --type SecureString --value file://apps/worker/.env --region eu-north-1
-aws ssm get-parameter --name /bolty/worker-env --with-decryption --query Parameter.Value --output text \
-  --region eu-north-1 > apps/worker/.env
-docker compose --env-file apps/worker/.env -f docker-compose.worker.yml up -d --build
-
-# The system prompt assumes an Expo project already exists in the project folder
-docker compose -f docker-compose.worker.yml exec -T worker sh -c "cd /tmp/bolty-worker && npx --yes create-expo-app@latest ."
+# An instance profile that lets the machines read it
+aws iam create-role --role-name bolty-worker --assume-role-policy-document \
+  '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+aws iam put-role-policy --role-name bolty-worker --policy-name read-worker-env --policy-document \
+  '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"ssm:GetParameter","Resource":"arn:aws:ssm:eu-north-1:*:parameter/bolty/worker-env"}]}'
+aws iam create-instance-profile --instance-profile-name bolty-worker
+aws iam add-role-to-instance-profile --instance-profile-name bolty-worker --role-name bolty-worker
 ```
 
-The machines need an IAM instance profile that allows `ssm:GetParameter` on `/bolty/worker-env`.
-If the GitHub repo is private, `git clone` also needs a token.
+The repo must be public, or `git clone` needs a token. After changing `apps/worker/.env`, run the
+`put-parameter` command again with `--overwrite`.
 
 Building on every boot is slow. Once this works, push the images to ECR from CI and pull them instead.
 
