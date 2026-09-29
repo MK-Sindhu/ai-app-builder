@@ -8,3 +8,4 @@
 .github
 # Built separately from its own folder
 worker-orchestrator
+kimi.sh

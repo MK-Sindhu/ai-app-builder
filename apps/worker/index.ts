@@ -11,13 +11,20 @@ const PORT = Number(process.env.PORT ?? 9091);
 // Any OpenAI-compatible API works. For Grok use LLM_BASE_URL=https://api.x.ai/v1 and a grok model.
 const LLM_BASE_URL = process.env.LLM_BASE_URL ?? "https://api.deepseek.com";
 const LLM_MODEL = process.env.LLM_MODEL ?? "deepseek-v4-pro";
-// Tried once when the main model is overloaded or rate-limited, e.g. gemini-2.5-flash
+// Tried once when the main model is busy or gone. It can be on another provider (e.g. a second free tier):
+// set LLM_FALLBACK_BASE_URL and LLM_FALLBACK_API_KEY, which otherwise default to the main provider's.
 const LLM_FALLBACK_MODEL = process.env.LLM_FALLBACK_MODEL;
 // A whole app is many files. Too low and replies stop partway through.
 const LLM_MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS ?? 32000);
 
-// Retries overloaded (5xx) and rate-limited (429) requests with backoff before giving up
+// Both retry overloaded (5xx) and rate-limited (429) requests with backoff before giving up
 const llm = new OpenAI({ apiKey: process.env.LLM_API_KEY, baseURL: LLM_BASE_URL, maxRetries: 4 });
+const fallbackLlm = new OpenAI({
+  // || rather than ??, so a line left empty in the .env also means "same as the main provider"
+  apiKey: process.env.LLM_FALLBACK_API_KEY || process.env.LLM_API_KEY,
+  baseURL: process.env.LLM_FALLBACK_BASE_URL || LLM_BASE_URL,
+  maxRetries: 4,
+});
 
 // Busy (429, 5xx) even after retries, or gone (404: Google retires models, sometimes only for new accounts)
 function shouldFallBack(error: unknown): error is InstanceType<typeof OpenAI.APIError> {
@@ -26,7 +33,7 @@ function shouldFallBack(error: unknown): error is InstanceType<typeof OpenAI.API
 
 // Starts the model's reply, falling back to LLM_FALLBACK_MODEL if the main model is busy or unavailable
 async function startReply(messages: OpenAI.Chat.ChatCompletionMessageParam[]) {
-  const request = (model: string) => llm.chat.completions.create({
+  const request = (client: OpenAI, model: string) => client.chat.completions.create({
     model,
     max_tokens: LLM_MAX_TOKENS,
     stream: true,
@@ -34,11 +41,11 @@ async function startReply(messages: OpenAI.Chat.ChatCompletionMessageParam[]) {
   });
 
   try {
-    return await request(LLM_MODEL);
+    return await request(llm, LLM_MODEL);
   } catch (error) {
     if (LLM_FALLBACK_MODEL && shouldFallBack(error)) {
       console.log(`${LLM_MODEL} is unavailable (${error.status}), using ${LLM_FALLBACK_MODEL}`);
-      return await request(LLM_FALLBACK_MODEL);
+      return await request(fallbackLlm, LLM_FALLBACK_MODEL);
     }
     throw error;
   }
