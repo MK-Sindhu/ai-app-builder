@@ -31,7 +31,9 @@ docker run --rm --network host amazon/aws-cli ssm get-parameter --name /bolty/wo
   --with-decryption --query Parameter.Value --output text --region "$REGION" > apps/worker/.env
 
 COMPOSE="docker compose --env-file apps/worker/.env -f docker-compose.worker.yml"
-$COMPOSE build
+# The images CI pushed to GitHub's registry. Any that can't be pulled (e.g. still private), `up` builds
+# from this checkout instead, which takes about 10 minutes instead of 1.
+$COMPOSE pull || echo "Couldn't pull the images, building them instead"
 
 # The worker sets up the project itself (templates/website) and reports ready once it's installed
 $COMPOSE up -d

@@ -54,8 +54,8 @@ image, and logs to `/var/log/bolty-setup.log` on the machine.
 4. **Auto scaling group** `vscode-asg` → use that version. `MinSize` 0 (the orchestrator sets the desired
    capacity), `MaxSize` = the most machines you're willing to pay for (users at once + 2 spare).
 
-The repo must be public, or `git clone` needs a token. Building on every boot takes ~10 minutes; once this
-works, push the images to ECR from CI and pull them instead.
+The repo must be public, or `git clone` needs a token. Machines pull their images from GitHub's registry
+(see [Images](#images)); a machine that can't pull them builds them itself, which takes ~10 minutes instead of 1.
 
 ## 4. Control server
 
@@ -109,7 +109,8 @@ sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 sudo docker run --rm -v /opt:/opt alpine/git clone https://github.com/MK-Sindhu/ai-app-builder.git /opt/bolty
 ```
 
-To update the server later: `sudo docker run --rm -v /opt/bolty:/git alpine/git pull`, then the `up` command below again.
+To update the server later, once CI has pushed the new images: `sudo docker run --rm -v /opt/bolty:/git alpine/git pull`,
+then the `pull` and `up` commands below again.
 
 From your Mac, copy the `.env` files:
 
@@ -130,7 +131,8 @@ Then:
 
 ```bash
 cd /opt/bolty
-sudo docker compose -f docker-compose.control.yml up -d --build
+sudo docker compose -f docker-compose.control.yml pull
+sudo docker compose -f docker-compose.control.yml up -d
 sudo docker compose -f docker-compose.control.yml logs -f      # Ctrl+C to stop watching
 ```
 
@@ -154,6 +156,22 @@ credentials in production.
 Each project's preview is `https://<projectId>.preview.ndstill.com`: the site, served by
 Vite's dev server on the project's machine. Caddy gets each preview host's certificate the first time it's
 opened. Let's Encrypt allows about 50 new certificates a week for the domain, which is plenty for a few users.
+
+## Images
+
+On every push to `main` that passes the checks, CI ([.github/workflows/ci.yml](.github/workflows/ci.yml))
+pushes four images to GitHub's registry, tagged `latest` and with the commit:
+`ghcr.io/mk-sindhu/ndstill-backend`, `-orchestrator`, `-worker` and `-code-server`. The servers pull
+`latest`, so they need no login, but that means the images must be public: after the first push, open each
+one under your GitHub profile → **Packages** → **Package settings** → **Change visibility** → Public.
+They hold only what's in the public repo; `.env` files are never in them.
+
+## Pausing between demos
+
+From your laptop, `sh deploy/pause.sh` stops the control server and removes every worker machine;
+`sh deploy/resume.sh` turns everything back on (a few minutes until new projects can start). While
+paused, ndstill.com still loads but can't open projects, and you pay only for the control server's disk
+and the Elastic IP. Code on the machines is lost; projects and chats stay in the database.
 
 ## Before real users
 
