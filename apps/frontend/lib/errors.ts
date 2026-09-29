@@ -1,17 +1,18 @@
 import axios from "axios";
 
-// Turns a failed request into a message that says what happened and what to do next
-export function describeRequestError(error: unknown, fallback: string) {
-  if (axios.isAxiosError(error)) {
-    if (error.response?.status === 503) {
-      return "All machines are busy. A new one is starting, so try again in about a minute.";
-    }
-    if (error.response?.status === 401) {
-      return "Your session has ended. Sign in again to continue.";
-    }
-    if (!error.response) {
-      return "Can't reach ndstill. Check your connection and try again.";
-    }
+// Turns a failed request into a message that says what happened and what to do next.
+// `action` completes "Couldn't ...", e.g. "start the build".
+export function describeRequestError(error: unknown, action: string) {
+  const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+  if (status === 503) {
+    return "No machine is free yet. One is starting, which can take a few minutes, so try again shortly.";
   }
-  return fallback;
+  if (status === 401) {
+    return "Your session has ended. Sign in again to continue.";
+  }
+  if (axios.isAxiosError(error) && !error.response) {
+    return "Can't reach ndstill. Check your connection and try again.";
+  }
+  // The code tells whoever reads the server logs where to look
+  return status ? `Couldn't ${action} (error ${status}). Try again.` : `Couldn't ${action}. Try again.`;
 }

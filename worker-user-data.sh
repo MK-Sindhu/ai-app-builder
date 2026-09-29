@@ -11,6 +11,10 @@ REPO=https://github.com/MK-Sindhu/ai-app-builder.git
 # Wait for the Docker daemon to start
 until docker info >/dev/null 2>&1; do sleep 2; done
 
+# The base image still has the old code-server container and image; free their disk space
+docker container prune -f
+docker image prune -af
+
 # Docker Compose plugin, if the image doesn't have it
 if ! docker compose version >/dev/null 2>&1; then
   mkdir -p /usr/local/lib/docker/cli-plugins

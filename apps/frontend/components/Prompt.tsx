@@ -57,7 +57,7 @@ export function Prompt() {
       }, { headers });
       router.push(`/project/${id}`);
     } catch (e) {
-      setError(describeRequestError(e, "Couldn't start the build. Try again."));
+      setError(describeRequestError(e, "start the build"));
       setSending(false);
     }
   }

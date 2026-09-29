@@ -51,7 +51,7 @@ export function ChatPanel({ projectId, prompts, actions }: { projectId: string; 
             setMessage("");
             setPendingMessage(text);
         } catch (e) {
-            setError(describeRequestError(e, "Couldn't send your message. Try again."));
+            setError(describeRequestError(e, "send your message"));
         } finally {
             setSending(false);
         }
