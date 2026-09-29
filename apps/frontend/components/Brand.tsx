@@ -1,37 +1,17 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 
-const DOT_COLORS = ["bg-tomato", "bg-sun", "bg-mint", "bg-sky"];
-
-// The ndstill mark: an app icon holding four dots in the starter colours.
-// Animated, the dots take turns, which the workspace uses while a machine starts.
-export function LogoMark({ size = "sm", animated = false, className }: { size?: "sm" | "lg"; animated?: boolean; className?: string }) {
+// The ndstill logo: just the name, set in the display face
+export function Brand({ className }: { className?: string }) {
   return (
-    <span
-      aria-hidden
+    <Link
+      href="/"
       className={cn(
-        "grid shrink-0 grid-cols-2 place-content-center bg-ink",
-        size === "sm" ? "size-6 gap-[3px] rounded-[7px]" : "size-14 gap-[6px] rounded-[17px]",
+        "rounded-lg font-display text-[20px] font-semibold tracking-[-0.02em] text-ink outline-none focus-visible:ring-2 focus-visible:ring-ink/30 focus-visible:ring-offset-4 focus-visible:ring-offset-frost",
         className,
       )}
     >
-      {DOT_COLORS.map((color, i) => (
-        <span
-          key={color}
-          className={cn("rounded-full", color, size === "sm" ? "size-[5px]" : "size-[11px]", animated && "blink-dot")}
-          style={animated ? ({ "--delay": `${i * 400}ms` } as CSSProperties) : undefined}
-        />
-      ))}
-    </span>
-  );
-}
-
-export function Brand() {
-  return (
-    <Link href="/" className="flex items-center gap-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ink/30 focus-visible:ring-offset-4 focus-visible:ring-offset-frost">
-      <LogoMark />
-      <span className="font-display text-[17px] font-semibold tracking-[-0.02em] text-ink">ndstill</span>
+      ndstill
     </Link>
   );
 }

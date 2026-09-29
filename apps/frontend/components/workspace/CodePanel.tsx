@@ -1,5 +1,8 @@
 import { ExternalLink } from "lucide-react";
-import { LogoMark } from "../Brand";
+import type { CSSProperties } from "react";
+import { cn } from "@/lib/utils";
+
+const LOADING_DOTS = ["bg-tomato", "bg-sun", "bg-mint", "bg-sky"];
 
 // The editor URL without its one-time sign-in token. The browser already has the project's
 // cookie once the editor has loaded here, so this address works in a new tab as well.
@@ -47,7 +50,16 @@ export function CodePanel({ url }: { url: string | null }) {
                 ) : (
                     <div className="grid flex-1 place-items-center p-8 text-center">
                         <div className="flex flex-col items-center">
-                            <LogoMark size="lg" animated />
+                            {/* The dots take turns while the machine starts */}
+                            <div aria-hidden className="flex gap-2">
+                                {LOADING_DOTS.map((color, i) => (
+                                    <span
+                                        key={color}
+                                        className={cn("blink-dot size-2.5 rounded-full", color)}
+                                        style={{ "--delay": `${i * 200}ms` } as CSSProperties}
+                                    />
+                                ))}
+                            </div>
                             <h2 className="mt-6 font-display text-[16px] font-semibold tracking-[-0.01em] text-ink">
                                 Setting up a machine for this project
                             </h2>

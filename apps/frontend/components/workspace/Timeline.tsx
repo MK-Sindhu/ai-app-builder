@@ -2,7 +2,6 @@ import { CircleCheck, CircleX, FilePen, LoaderCircle, Play, SquareTerminal, Tria
 import type { Action } from "@/hooks/useActions";
 import type { Prompt } from "@/hooks/usePrompts";
 import { cn } from "@/lib/utils";
-import { LogoMark } from "../Brand";
 
 type Step = {
     icon: LucideIcon;
@@ -76,8 +75,7 @@ export function Timeline({ prompts, actions, pendingMessage }: { prompts: Prompt
     if (blocks.length === 0 && pendingMessage === null) {
         return (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-                <LogoMark />
-                <p className="mt-4 max-w-[280px] text-[14px] leading-relaxed text-graphite">
+                <p className="max-w-[280px] text-[14px] leading-relaxed text-graphite">
                     Describe what to build or change. Every file ndstill writes and every command it runs shows up here.
                 </p>
             </div>

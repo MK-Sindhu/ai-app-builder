@@ -1,16 +1,13 @@
 "use client";
-import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
-import { LogoMark, ProjectTile } from "../Brand";
+import { Brand, ProjectTile } from "../Brand";
 import { ProjectsButton } from "../ProjectsDrawer";
 
 export function WorkspaceHeader({ projectId, title, machineReady }: { projectId: string; title: string; machineReady: boolean }) {
     return (
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-hairline bg-paper/80 px-4 backdrop-blur">
-            <Link href="/" aria-label="ndstill home" className="rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ink/30">
-                <LogoMark />
-            </Link>
+            <Brand className="text-[16px] focus-visible:ring-offset-paper" />
             <span aria-hidden className="text-graphite/40">/</span>
             <div className="flex min-w-0 items-center gap-2">
                 <ProjectTile projectId={projectId} className="size-5 rounded-[6px]" />
