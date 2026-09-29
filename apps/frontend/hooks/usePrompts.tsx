@@ -3,11 +3,11 @@ import { useAuth } from "@clerk/nextjs";
 import axios from "axios";
 import { useEffect, useState } from "react";
 
-interface Prompt {
+export interface Prompt {
     id: string;
     content: string;
     type: "USER" | "SYSTEM";
-    createdAt: Date;
+    createdAt: string;
 }
 
 export function usePrompts(projectId: string) {

@@ -1,29 +1,28 @@
+import type { CSSProperties } from "react";
 import { Appbar } from "@/components/Appbar";
-import { Button } from "@/components/ui/button";
 import { Prompt } from "@/components/Prompt";
-import Image from "next/image";
-import { TemplateButtons } from "@/components/TemplateButtons";
-import { ProjectsDrawer } from "@/components/ProjectsDrawer";
 
 export default function Home() {
   return (
-    <div className="p-4">
+    <div className="min-h-dvh bg-frost bg-[radial-gradient(1100px_560px_at_50%_-10%,#ffffff_25%,transparent_72%)]">
       <Appbar />
-      <ProjectsDrawer />
-      <div className="max-w-2xl mx-auto pt-32">
-        <div className="text-2xl font-bold text-center">
-          What do you want to build?
-        </div>
-        <div className="text-sm text-muted-foreground text-center p-2">
-          Prompt, click generate and watch your app come to life
-        </div>
-        <div className="pt-4">
+      <main className="mx-auto max-w-[720px] px-5 pb-24 pt-14 sm:pt-24">
+        <h1 className="rise text-center font-display text-[31px] font-semibold leading-[1.06] tracking-[-0.035em] text-ink sm:text-[56px] sm:leading-[1.04] lg:text-[64px]">
+          Mobile apps,
+          <br />
+          from a sentence.
+        </h1>
+        <p
+          className="rise mx-auto mt-5 max-w-[540px] text-balance text-center text-[16px] leading-relaxed text-graphite sm:text-[17px]"
+          style={{ "--delay": "90ms" } as CSSProperties}
+        >
+          Describe your app in plain words. ndstill writes the React Native code, installs what it needs,
+          and opens it in an editor you can keep changing.
+        </p>
+        <div className="rise mt-10" style={{ "--delay": "180ms" } as CSSProperties}>
           <Prompt />
         </div>
-      </div>
-      <div className="max-w-2xl mx-auto pt-4">
-        <TemplateButtons />
-      </div>
+      </main>
     </div>
   );
 }

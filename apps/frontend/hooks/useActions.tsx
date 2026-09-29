@@ -3,10 +3,10 @@ import { useAuth } from "@clerk/nextjs";
 import axios from "axios";
 import { useEffect, useState } from "react";
 
-interface Action {
+export interface Action {
     id: string;
     content: string;
-    createdAt: Date;
+    createdAt: string;
 }
 
 export function useActions(projectId: string) {
