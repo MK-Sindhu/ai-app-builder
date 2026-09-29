@@ -3,6 +3,7 @@ import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { Brand, ProjectTile } from "../Brand";
 import { ProjectsButton } from "../ProjectsDrawer";
+import { CloseProjectButton } from "./CloseProjectButton";
 
 export function WorkspaceHeader({ projectId, title, machineReady }: { projectId: string; title: string; machineReady: boolean }) {
     return (
@@ -22,6 +23,7 @@ export function WorkspaceHeader({ projectId, title, machineReady }: { projectId:
                     <span className={cn("size-2 rounded-full", machineReady ? "bg-mint" : "animate-pulse bg-sun")} />
                     {machineReady ? "Machine ready" : "Starting machine"}
                 </span>
+                <CloseProjectButton projectId={projectId} />
                 <ProjectsButton currentProjectId={projectId} />
                 <div className="ml-1 flex">
                     <UserButton />

@@ -208,6 +208,39 @@ app.get("/project/:projectId/machine", authMiddleware, async (req, res) => {
   res.json({ machineId: machine.machineId, codeServerUrl });
 });
 
+// Frees this project's machine for someone else. The code on it is deleted; the chat stays in the
+// database, and opening the project again gets a fresh machine.
+app.post("/project/:projectId/close", authMiddleware, async (req, res) => {
+  const userId = req.userId!;
+  const projectId = String(req.params.projectId);
+
+  if (!(await findUserProject(projectId, userId))) {
+    res.status(404).json({ message: "Project not found" });
+    return;
+  }
+
+  const machine = await getMachine(projectId, true);
+  if (!machine) {
+    // Already released
+    res.json({ message: "Project closed" });
+    return;
+  }
+
+  const response = await fetch(`${ORCHESTRATOR_URL}/destroy`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.ORCHESTRATOR_SECRET}`,
+    },
+    body: JSON.stringify({ machineId: machine.machineId }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Orchestrator returned ${response.status}`);
+  }
+  res.json({ message: "Project closed" });
+});
+
 // The preview on this project's machine: "starting", "failed", or "ready" with its address
 app.get("/project/:projectId/preview", authMiddleware, async (req, res) => {
   const userId = req.userId!;
