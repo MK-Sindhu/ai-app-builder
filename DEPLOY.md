@@ -1,130 +1,160 @@
-# Deploying Bolty
+# Deploying Bolty on ndstill.com
 
 ## How the pieces talk
 
 ```
-Browser ──HTTPS──> frontend (Vercel)
-Browser ──HTTPS──> primary-backend ──ORCHESTRATOR_SECRET──> worker-orchestrator ──> AWS auto scaling group
-                        │
-                        └──WORKER_SECRET──> worker on the project's machine (private IP, port 9091)
-Browser ──────────> code-server on the project's machine (port 8080, password)
+Browser ──HTTPS──> ndstill.com                    frontend (Vercel)
+Browser ──HTTPS──> api.ndstill.com                ┐
+Browser ──HTTPS──> code.ndstill.com/<projectId>/  ┘ control server: Caddy
+                                                     ├──> backend ──> orchestrator ──> auto scaling group
+                                                     │       └──> worker on the project's machine (:9091)
+                                                     └──> code-server on the project's machine (:8080),
+                                                          after the backend checks the user owns the project
 ```
 
-Only the backend and code-server are public. The orchestrator and the workers only accept calls
-that carry their shared secret, and security groups keep them off the internet as well.
+Only the control server is reachable from the internet (ports 80 and 443). The worker machines accept
+ports 9091 and 8080 from the control server only. Project files live on the machine and are deleted when
+the session ends (`IDLE_TIMEOUT_MINUTES` on the orchestrator).
 
 ## 1. Secrets
 
-Generate one value each for `ORCHESTRATOR_SECRET`, `WORKER_SECRET` and `CODE_SERVER_PASSWORD`:
+Generate one value each for `ORCHESTRATOR_SECRET`, `WORKER_SECRET` and `ROUTER_SECRET`:
 
 ```bash
 openssl rand -hex 32
 ```
 
-Each service's `.env.example` lists what it needs. Keep the real values in AWS SSM Parameter Store,
-not in launch template user data (anyone who can describe the instance can read user data).
+Each service's `.env.example` lists what it needs.
 
 ## 2. Database
 
-Create a Postgres database (e.g. RDS), then apply the migrations once per deploy:
+Apply the migrations once per deploy:
 
 ```bash
 cd packages/db
-DATABASE_URL="postgresql://..." bun run migrate:deploy
+DATABASE_URL="$(grep '^DATABASE_URL=' ../../apps/primary-backend/.env | cut -d= -f2-)" bunx prisma migrate deploy
 ```
 
-## 3. Security groups
-
-| Group | Inbound rules |
-|---|---|
-| `backend-sg` | 443 from the internet (through the load balancer) |
-| `orchestrator-sg` | 9092 from `backend-sg` |
-| `worker-sg` | 9091 from `backend-sg` and `orchestrator-sg`; 8080 from anywhere (code-server, password protected) |
-| `db-sg` | 5432 from `backend-sg` and `worker-sg` |
-
-## 4. IAM role for the orchestrator
-
-Attach this to the orchestrator's EC2 instance instead of using access keys:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "autoscaling:DescribeAutoScalingGroups",
-        "autoscaling:SetDesiredCapacity",
-        "autoscaling:SetInstanceProtection",
-        "autoscaling:TerminateInstanceInAutoScalingGroup",
-        "ec2:DescribeInstances",
-        "ec2:CreateTags"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
-
-The auto scaling group's `MaxSize` caps how many projects can have a machine at once
-(machines in use + 2 idle). Set `MinSize` to 0: the orchestrator sets the desired capacity itself,
-and AWS refuses to release a machine if that would take the group below `MinSize`.
-
-## 5. Worker machines (launch template user data)
+## 3. Worker machines
 
 Each machine runs `docker-compose.worker.yml`: the worker and code-server sharing `/tmp/bolty-worker`.
 The launch template's user data is [worker-user-data.sh](worker-user-data.sh). It only needs Docker on the
 image, and logs to `/var/log/bolty-setup.log` on the machine.
 
-Before machines can boot with it:
+1. **Parameter Store** → create `/bolty/worker-env`, type SecureString, value: the contents of
+   `apps/worker/.env`. Update it whenever that file changes.
+2. **IAM role `bolty-worker`** (trusted entity: EC2) with this inline policy:
+   ```json
+   { "Version": "2012-10-17", "Statement": [
+     { "Effect": "Allow", "Action": "ssm:GetParameter", "Resource": "arn:aws:ssm:eu-north-1:*:parameter/bolty/worker-env" } ] }
+   ```
+3. **Launch template** `vscode-base-launch-template` → new version from version 2, with IAM instance
+   profile `bolty-worker` and user data = the contents of `worker-user-data.sh`.
+4. **Auto scaling group** `vscode-asg` → use that version. `MinSize` 0 (the orchestrator sets the desired
+   capacity), `MaxSize` = the most machines you're willing to pay for (users at once + 2 spare).
+
+The repo must be public, or `git clone` needs a token. Building on every boot takes ~10 minutes; once this
+works, push the images to ECR from CI and pull them instead.
+
+## 4. Control server
+
+1. **IAM role `bolty-control`** (trusted entity: EC2) with this inline policy, so the orchestrator needs
+   no access keys:
+   ```json
+   { "Version": "2012-10-17", "Statement": [ { "Effect": "Allow", "Action": [
+     "autoscaling:DescribeAutoScalingGroups", "autoscaling:SetDesiredCapacity",
+     "autoscaling:SetInstanceProtection", "autoscaling:TerminateInstanceInAutoScalingGroup",
+     "ec2:DescribeInstances", "ec2:CreateTags" ], "Resource": "*" } ] }
+   ```
+2. **Security group `bolty-control`**: inbound 80 and 443 from anywhere, 22 from your IP.
+3. **Launch an instance**: image `vscode-base-image` (it has Docker), type `c7i-flex.large`, security group
+   `bolty-control`, IAM instance profile `bolty-control`, your key pair. In the same VPC as the workers.
+4. **Metadata hop limit 2**: Instance → Actions → Instance settings → Modify instance metadata options →
+   hop limit `2`. Without it, the orchestrator inside Docker can't use the instance's role.
+5. **Elastic IP**: allocate one and associate it with the instance, so its address never changes.
+6. **Worker security group** `sg-038a850a6c9bd0a89`: allow 9091 and 8080 from security group
+   `bolty-control`, and remove every other rule for those ports (8080 from anywhere, 9091 from your IP).
+   code-server has no login of its own; this rule is what keeps it private.
+
+## 5. DNS at GoDaddy
+
+Domain → DNS → remove the parking/forwarding records for `@`, then add:
+
+| Type | Name | Value |
+|---|---|---|
+| A | `api` | the Elastic IP |
+| A | `code` | the Elastic IP |
+| A | `@` | the IP Vercel shows when you add the domain (step 7) |
+| CNAME | `www` | the value Vercel shows |
+
+Plus the records Clerk lists for its production instance (step 8).
+
+## 6. Start the control server
+
+SSH in, get the code and the `.env` files onto it, and start everything. Caddy gets the HTTPS
+certificates for `api` and `code` by itself once the DNS records point at the server.
 
 ```bash
-# The worker's .env, which the script reads at boot
-aws ssm put-parameter --name /bolty/worker-env --type SecureString --value file://apps/worker/.env --region eu-north-1
+ssh -i key-pair-1.pem <user>@<elastic-ip>       # user is ubuntu or ec2-user, depending on the image
 
-# An instance profile that lets the machines read it
-aws iam create-role --role-name bolty-worker --assume-role-policy-document \
-  '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
-aws iam put-role-policy --role-name bolty-worker --policy-name read-worker-env --policy-document \
-  '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"ssm:GetParameter","Resource":"arn:aws:ssm:eu-north-1:*:parameter/bolty/worker-env"}]}'
-aws iam create-instance-profile --instance-profile-name bolty-worker
-aws iam add-role-to-instance-profile --instance-profile-name bolty-worker --role-name bolty-worker
+# Docker Compose, if the image doesn't have it (check with: docker compose version)
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# The code (git runs in a container, so it doesn't need to be installed)
+sudo docker run --rm -v /opt:/opt alpine/git clone https://github.com/MK-Sindhu/ai-app-builder.git /opt/bolty
 ```
 
-The repo must be public, or `git clone` needs a token. After changing `apps/worker/.env`, run the
-`put-parameter` command again with `--overwrite`.
+To update the server later: `sudo docker run --rm -v /opt/bolty:/git alpine/git pull`, then the `up` command below again.
 
-Building on every boot is slow. Once this works, push the images to ECR from CI and pull them instead.
-
-## 6. Orchestrator
-
-Run exactly one copy (it keeps its list of machines in memory), on a small EC2 instance in the same VPC:
+From your Mac, copy the `.env` files:
 
 ```bash
-docker build -t worker-orchestrator worker-orchestrator
-docker run -d --restart unless-stopped --env-file worker-orchestrator/.env -p 9092:9092 worker-orchestrator
+scp -i key-pair-1.pem apps/primary-backend/.env <user>@<elastic-ip>:/tmp/backend.env
+scp -i key-pair-1.pem worker-orchestrator/.env <user>@<elastic-ip>:/tmp/orchestrator.env
 ```
 
-## 7. Primary backend
+On the server, move them into place (`sudo mv /tmp/backend.env /opt/bolty/apps/primary-backend/.env`,
+same for the orchestrator) and set these values:
 
-Run it behind an Application Load Balancer with an HTTPS certificate (ACM):
+| File | Setting |
+|---|---|
+| `apps/primary-backend/.env` | `ORCHESTRATOR_URL=http://orchestrator:9092`, `WORKER_ADDRESS=private`, `CODE_URL=https://code.ndstill.com`, `ROUTER_SECRET=...`, `FRONTEND_URL=https://ndstill.com,https://www.ndstill.com`, Clerk production `JWT_PUBLIC_KEY` |
+| `worker-orchestrator/.env` | delete `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (the role replaces them), `WORKER_ADDRESS=private`, `IDLE_TIMEOUT_MINUTES=10` |
+
+Then:
 
 ```bash
-docker build -f apps/primary-backend/Dockerfile -t primary-backend .
-docker run -d --restart unless-stopped --env-file apps/primary-backend/.env -p 9090:9090 primary-backend
+cd /opt/bolty
+sudo docker compose -f docker-compose.control.yml up -d --build
+sudo docker compose -f docker-compose.control.yml logs -f      # Ctrl+C to stop watching
 ```
 
-Health check path: `/health`.
+Check: `https://api.ndstill.com/health` should answer `{"status":"ok"}`.
 
-## 8. Frontend
+## 7. Frontend on Vercel
 
-Deploy `apps/frontend` on Vercel (set the root directory to `apps/frontend`) with the variables in
-`apps/frontend/.env.example`. `NEXT_PUBLIC_BACKEND_URL` must be the backend's HTTPS URL.
+Import the GitHub repo, set the root directory to `apps/frontend`, and add the variables:
+`NEXT_PUBLIC_BACKEND_URL=https://api.ndstill.com` plus the Clerk production keys. Then Settings →
+Domains → add `ndstill.com` and `www.ndstill.com`, and put the records it shows into GoDaddy.
 
-## Known gaps
+## 8. Clerk production
 
-- **code-server over HTTPS.** The iframe loads `http://<machine>:8080`, which browsers block inside an
-  HTTPS page. It needs the router from the README: a wildcard domain with TLS in front of code-server.
-- **Every opened project keeps a running machine.** Machines are only freed by `POST /destroy`, or
-  automatically if you set `IDLE_TIMEOUT_MINUTES` on the orchestrator. Freeing a machine deletes the
-  project's files, since they live only on the machine (README: back up to S3).
+Clerk dashboard → **Go to prod** → create the production instance for `ndstill.com`, add the DNS records
+it lists in GoDaddy, then use its keys: `pk_live_...` and `sk_live_...` in Vercel, and its JWKS public
+key as `JWT_PUBLIC_KEY` on the control server. Social logins (e.g. Google) need your own OAuth
+credentials in production.
+
+## Before real users
+
+- A paid LLM key: the free tier's daily limit runs out quickly.
+- `MaxSize` on the auto scaling group caps both concurrent users and your bill.
+- The orchestrator must run as a single copy (it keeps its list of machines in memory).
+
+## Local development
+
+On your laptop, leave `CODE_URL` empty and set `WORKER_ADDRESS=public` in the backend and orchestrator.
+The worker security group then also needs 9091 and 8080 from your IP while you test; remove those rules
+afterwards, since code-server has no login.

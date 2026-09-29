@@ -17,5 +17,6 @@ USER coder
 # Expose code-server's default port
 EXPOSE 8080
 
-# Start code-server on container launch. The login password comes from the PASSWORD env var.
-CMD ["code-server", "--auth", "password", "--bind-addr", "0.0.0.0:8080", "/tmp/bolty-worker"]
+# Start code-server on container launch. No login of its own: the router on the control server checks
+# each user, and the security group only lets the control server reach port 8080.
+CMD ["code-server", "--auth", "none", "--bind-addr", "0.0.0.0:8080", "/tmp/bolty-worker"]

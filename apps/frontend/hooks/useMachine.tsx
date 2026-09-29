@@ -9,8 +9,13 @@ const HEARTBEAT_MS = 60 * 1000;
 // How soon to ask again when no machine is free yet
 const RETRY_MS = 5000;
 
+type Machine = {
+    machineId: string;
+    codeServerUrl: string;
+};
+
 export function useMachine(projectId: string) {
-    const [codeServerUrl, setCodeServerUrl] = useState<string | null>(null);
+    const [machine, setMachine] = useState<Machine | null>(null);
     const { getToken } = useAuth();
 
     useEffect(() => {
@@ -36,9 +41,11 @@ export function useMachine(projectId: string) {
                             "Authorization": `Bearer ${token}`
                         }
                     });
-                    // Changes when the old machine was released and the project got a new one
+                    // Every answer has a fresh sign-in link, so only switch (and reload the editor)
+                    // when the project got a different machine
                     if (!stopped) {
-                        setCodeServerUrl(res.data.codeServerUrl);
+                        const next: Machine = res.data;
+                        setMachine((current) => current?.machineId === next.machineId ? current : next);
                     }
                 } catch (e) {
                     const status = axios.isAxiosError(e) ? e.response?.status : undefined;
@@ -75,6 +82,6 @@ export function useMachine(projectId: string) {
     }, [projectId]);
 
     return {
-        codeServerUrl,
+        codeServerUrl: machine?.codeServerUrl ?? null,
     };
 }

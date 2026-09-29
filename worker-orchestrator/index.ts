@@ -239,6 +239,12 @@ app.get("/project/:projectId", requireSecret, async (req, res) => {
         return;
     }
 
+    // ?lookup=1 (the router) only finds an existing assignment and never hands out a machine
+    if (req.query.lookup !== undefined) {
+        res.status(404).send({ message: "No machine for this project" });
+        return;
+    }
+
     const idleMachine = ALL_MACHINES.find(x => x.isUsed === false);
     if (!idleMachine) {
         // Scale up the infra so a machine is free on the next try

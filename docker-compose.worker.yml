@@ -13,11 +13,10 @@ services:
       - project:/tmp/bolty-worker
     restart: unless-stopped
 
+  # No env_file here: the worker's secrets must not reach code-server, where the user has a terminal.
+  # No login either: the router checks each user, and only the control server can reach port 8080.
   code-server:
     build: apps/code-server
-    # Only the password. The worker's secrets must not reach code-server, where the user has a terminal.
-    environment:
-      PASSWORD: ${CODE_SERVER_PASSWORD:?set CODE_SERVER_PASSWORD in apps/worker/.env}
     ports:
       - "8080:8080"
     volumes:

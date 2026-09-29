@@ -1,0 +1,34 @@
+# What the always-on control server runs: Caddy (HTTPS and the router), the backend and the orchestrator.
+# Start it on the server with:
+#   docker compose -f docker-compose.control.yml up -d --build
+services:
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:-ndstill.com}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates, kept across restarts so they aren't requested again
+      - caddy_data:/data
+    restart: unless-stopped
+
+  # Not published: only reachable through Caddy
+  backend:
+    build:
+      context: .
+      dockerfile: apps/primary-backend/Dockerfile
+    env_file: apps/primary-backend/.env
+    restart: unless-stopped
+
+  # Not published: only the backend calls it
+  orchestrator:
+    build: worker-orchestrator
+    env_file: worker-orchestrator/.env
+    restart: unless-stopped
+
+volumes:
+  caddy_data:

@@ -1,0 +1,36 @@
+# Caddy on the control server: HTTPS for the backend, and the router in front of the editors.
+# Certificates come from Let's Encrypt automatically. Ports 80 and 443 must be open to the internet.
+
+api.{$DOMAIN} {
+	# The router's access check is only for Caddy
+	respond /router/* 404
+	reverse_proxy backend:9090
+}
+
+code.{$DOMAIN} {
+	# /<projectId> without the trailing slash would break code-server's relative links
+	@bare path_regexp bare ^/([0-9a-f-]{36})$
+	redir @bare {path}/ 308
+
+	# /<projectId>/... is that project's editor
+	@project path_regexp project ^/([0-9a-f-]{36})/
+	handle @project {
+		# route keeps these steps in the order written
+		route {
+			# Never trust a machine address sent by the browser
+			request_header -X-Machine
+			# The backend checks this user may open the project and answers with its machine's address
+			forward_auth backend:9090 {
+				uri /router/auth
+				copy_headers X-Machine
+			}
+			# code-server expects to be served at /, so drop the project id before forwarding
+			uri strip_prefix /{re.project.1}
+			reverse_proxy {http.request.header.X-Machine}
+		}
+	}
+
+	handle {
+		respond 404
+	}
+}
