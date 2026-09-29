@@ -5,6 +5,7 @@ import { secretAuthMiddleware } from "common/middleware";
 import { systemPrompt } from "./systemPrompt";
 import { ArtifactProcessor } from "./parser";
 import { onFileUpdate, onShellCommand } from "./os";
+import { previewState, runPreview } from "./preview";
 
 const PORT = Number(process.env.PORT ?? 9091);
 // Any OpenAI-compatible API works. For Grok use LLM_BASE_URL=https://api.x.ai/v1 and a grok model.
@@ -55,7 +56,7 @@ function describeError(error: unknown) {
       return "The AI model rejected the API key. Check LLM_API_KEY on the worker.";
     }
     if (error.status === 404) {
-      return "The AI model wasn't found. Check LLM_MODEL on the worker.";
+      return "The AI model wasn't found. Check LLM_MODEL and LLM_FALLBACK_MODEL on the worker.";
     }
   }
   return "Something went wrong while building. Send your message again.";
@@ -66,6 +67,11 @@ app.use(express.json());
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+// Whether the preview (Expo's dev server, serving the web version of the app) is up
+app.get("/preview", secretAuthMiddleware("WORKER_SECRET"), async (req, res) => {
+  res.json(await previewState());
 });
 
 // Only the primary backend calls this, after checking the user owns the project
@@ -180,3 +186,5 @@ async function runPrompt(projectId: string, allPrompts: { type: "USER" | "SYSTEM
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+runPreview();

@@ -1,8 +1,15 @@
-# Caddy on the control server: HTTPS for the backend, and the router in front of the editors.
+# Caddy on the control server: HTTPS for the backend, and the router in front of the editors and previews.
 # Certificates come from Let's Encrypt automatically. Ports 80 and 443 must be open to the internet.
+{
+	# Preview hosts get their certificate on their first visit. Caddy asks the backend first,
+	# so it only requests certificates for real projects.
+	on_demand_tls {
+		ask http://backend:9090/router/preview-domain
+	}
+}
 
 api.{$DOMAIN} {
-	# The router's access check is only for Caddy
+	# The router's checks are only for Caddy
 	respond /router/* 404
 	reverse_proxy backend:9090
 }
@@ -32,5 +39,25 @@ code.{$DOMAIN} {
 
 	handle {
 		respond 404
+	}
+}
+
+# <projectId>.preview.<domain> is that project's app, served by Expo's dev server on its machine
+*.preview.{$DOMAIN} {
+	tls {
+		on_demand
+	}
+
+	route {
+		request_header -X-Machine
+		forward_auth backend:9090 {
+			uri /router/preview-auth
+			copy_headers X-Machine
+		}
+		reverse_proxy {http.request.header.X-Machine} {
+			# Expo's dev server only trusts requests that look like they come from localhost
+			header_up Host localhost:8081
+			header_up Origin http://localhost:8081
+		}
 	}
 }

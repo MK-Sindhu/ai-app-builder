@@ -2,14 +2,14 @@ import { prismaClient } from "db/client";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-const BASE_WORKER_DIR = "/tmp/bolty-worker";
+export const BASE_WORKER_DIR = "/tmp/bolty-worker";
 // Kill a command that hangs, e.g. an install waiting for input
 const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 // Commands that start a server and never exit on their own
 const LONG_RUNNING_COMMAND = /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(dev|start)\b|\bexpo\s+start\b/;
 
 // The model's commands only get what they need, not the worker's secrets (DATABASE_URL, LLM_API_KEY)
-const COMMAND_ENV = { PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin", HOME: process.env.HOME ?? "/tmp" };
+export const COMMAND_ENV = { PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin", HOME: process.env.HOME ?? "/tmp" };
 
 mkdirSync(BASE_WORKER_DIR, { recursive: true });
 
@@ -39,12 +39,11 @@ export async function onShellCommand(shellCommand: string, projectId: string) {
         console.log(`Running command: ${command}`);
 
         if (LONG_RUNNING_COMMAND.test(command)) {
-            // Leave dev servers running in the background instead of waiting for them to exit
-            Bun.spawn({ cmd: ["sh", "-c", command], cwd: BASE_WORKER_DIR, env: COMMAND_ENV, stdout: "ignore", stderr: "ignore" });
+            // The phone preview (preview.ts) already runs the dev server. A second one would clash with it.
             await prismaClient.action.create({
                 data: {
                     projectId,
-                    content: `Started command: ${command}`,
+                    content: `Skipped command: ${command}`,
                 },
             });
             continue;

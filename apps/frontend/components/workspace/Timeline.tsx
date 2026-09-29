@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, FilePen, LoaderCircle, Play, SquareTerminal, TriangleAlert, type LucideIcon } from "lucide-react";
+import { CircleCheck, CircleSlash, CircleX, FilePen, LoaderCircle, Play, SquareTerminal, TriangleAlert, type LucideIcon } from "lucide-react";
 import type { Action } from "@/hooks/useActions";
 import type { Prompt } from "@/hooks/usePrompts";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,8 @@ function toStep(content: string): Step {
         ["Updated file ", FilePen, "Wrote", "plain"],
         ["Ran command: ", SquareTerminal, "Ran", "plain"],
         ["Started command: ", Play, "Started", "plain"],
+        // Dev server commands; the phone preview already runs one
+        ["Skipped command: ", CircleSlash, "Skipped", "plain"],
         ["Command failed: ", CircleX, "Failed", "failed"],
     ];
     for (const [prefix, icon, verb, tone] of kinds) {

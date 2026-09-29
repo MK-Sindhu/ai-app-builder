@@ -21,7 +21,7 @@ export default function ProjectPage() {
             <WorkspaceHeader projectId={projectId} title={title} machineReady={codeServerUrl !== null} />
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
                 <ChatPanel projectId={projectId} prompts={prompts} actions={actions} />
-                <CodePanel url={codeServerUrl} />
+                <CodePanel projectId={projectId} url={codeServerUrl} />
             </div>
         </div>
     );

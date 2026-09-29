@@ -1,19 +1,20 @@
-# Deploying Bolty on ndstill.com
+# Deploying ndstill
 
 ## How the pieces talk
 
 ```
 Browser ──HTTPS──> ndstill.com                    frontend (Vercel)
 Browser ──HTTPS──> api.ndstill.com                ┐
-Browser ──HTTPS──> code.ndstill.com/<projectId>/  ┘ control server: Caddy
+Browser ──HTTPS──> code.ndstill.com/<projectId>/  │ control server: Caddy
+Browser ──HTTPS──> <projectId>.preview.ndstill.com ┘
                                                      ├──> backend ──> orchestrator ──> auto scaling group
                                                      │       └──> worker on the project's machine (:9091)
-                                                     └──> code-server on the project's machine (:8080),
-                                                          after the backend checks the user owns the project
+                                                     └──> code-server (:8080) or the Expo preview (:8081) on the
+                                                          project's machine, after the backend checks the user owns it
 ```
 
 Only the control server is reachable from the internet (ports 80 and 443). The worker machines accept
-ports 9091 and 8080 from the control server only. Project files live on the machine and are deleted when
+ports 9091, 8080 and 8081 from the control server only. Project files live on the machine and are deleted when
 the session ends (`IDLE_TIMEOUT_MINUTES` on the orchestrator).
 
 ## 1. Secrets
@@ -72,7 +73,7 @@ works, push the images to ECR from CI and pull them instead.
 4. **Metadata hop limit 2**: Instance → Actions → Instance settings → Modify instance metadata options →
    hop limit `2`. Without it, the orchestrator inside Docker can't use the instance's role.
 5. **Elastic IP**: allocate one and associate it with the instance, so its address never changes.
-6. **Worker security group** `sg-038a850a6c9bd0a89`: allow 9091 and 8080 from security group
+6. **Worker security group** `sg-038a850a6c9bd0a89`: allow 9091, 8080 and 8081 from security group
    `bolty-control`, and remove every other rule for those ports (8080 from anywhere, 9091 from your IP).
    code-server has no login of its own; this rule is what keeps it private.
 
@@ -84,6 +85,7 @@ Domain → DNS → remove the parking/forwarding records for `@`, then add:
 |---|---|---|
 | A | `api` | the Elastic IP |
 | A | `code` | the Elastic IP |
+| A | `*.preview` | the Elastic IP (one record covers every project's preview) |
 | A | `@` | the IP Vercel shows when you add the domain (step 7) |
 | CNAME | `www` | the value Vercel shows |
 
@@ -121,7 +123,7 @@ same for the orchestrator) and set these values:
 
 | File | Setting |
 |---|---|
-| `apps/primary-backend/.env` | `ORCHESTRATOR_URL=http://orchestrator:9092`, `WORKER_ADDRESS=private`, `CODE_URL=https://code.ndstill.com`, `ROUTER_SECRET=...`, `FRONTEND_URL=https://ndstill.com,https://www.ndstill.com`, Clerk production `JWT_PUBLIC_KEY` |
+| `apps/primary-backend/.env` | `ORCHESTRATOR_URL=http://orchestrator:9092`, `WORKER_ADDRESS=private`, `CODE_URL=https://code.ndstill.com`, `PREVIEW_DOMAIN=preview.ndstill.com`, `ROUTER_SECRET=...`, `FRONTEND_URL=https://ndstill.com,https://www.ndstill.com`, Clerk production `JWT_PUBLIC_KEY` |
 | `worker-orchestrator/.env` | delete `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (the role replaces them), `WORKER_ADDRESS=private`, `IDLE_TIMEOUT_MINUTES=10` |
 
 Then:
@@ -147,6 +149,12 @@ it lists in GoDaddy, then use its keys: `pk_live_...` and `sk_live_...` in Verce
 key as `JWT_PUBLIC_KEY` on the control server. Social logins (e.g. Google) need your own OAuth
 credentials in production.
 
+## Previews
+
+Each project's preview is `https://<projectId>.preview.ndstill.com`: the web version of the app, served by
+Expo's dev server on the project's machine. Caddy gets each preview host's certificate the first time it's
+opened. Let's Encrypt allows about 50 new certificates a week for the domain, which is plenty for a few users.
+
 ## Before real users
 
 - A paid LLM key: the free tier's daily limit runs out quickly.
@@ -156,5 +164,5 @@ credentials in production.
 ## Local development
 
 On your laptop, leave `CODE_URL` empty and set `WORKER_ADDRESS=public` in the backend and orchestrator.
-The worker security group then also needs 9091 and 8080 from your IP while you test; remove those rules
+The worker security group then also needs 9091, 8080 and 8081 from your IP while you test; remove those rules
 afterwards, since code-server has no login.

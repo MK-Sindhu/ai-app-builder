@@ -18,5 +18,6 @@ RUN cd packages/db && bunx prisma generate
 RUN mkdir -p /tmp/bolty-worker && chown bun:bun /tmp/bolty-worker
 USER bun
 
-EXPOSE 9091
+# 9091: the worker. 8081: Expo's dev server, which the router shows as the project's preview.
+EXPOSE 9091 8081
 CMD ["bun", "apps/worker/index.ts"]
