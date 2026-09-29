@@ -19,11 +19,12 @@ const LLM_MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS ?? 32000);
 // Retries overloaded (5xx) and rate-limited (429) requests with backoff before giving up
 const llm = new OpenAI({ apiKey: process.env.LLM_API_KEY, baseURL: LLM_BASE_URL, maxRetries: 4 });
 
-function isBusy(error: unknown): error is InstanceType<typeof OpenAI.APIError> {
-  return error instanceof OpenAI.APIError && (error.status === 429 || (error.status ?? 0) >= 500);
+// Busy (429, 5xx) even after retries, or gone (404: Google retires models, sometimes only for new accounts)
+function shouldFallBack(error: unknown): error is InstanceType<typeof OpenAI.APIError> {
+  return error instanceof OpenAI.APIError && (error.status === 404 || error.status === 429 || (error.status ?? 0) >= 500);
 }
 
-// Starts the model's reply, falling back to LLM_FALLBACK_MODEL if the main model is busy even after retries
+// Starts the model's reply, falling back to LLM_FALLBACK_MODEL if the main model is busy or unavailable
 async function startReply(messages: OpenAI.Chat.ChatCompletionMessageParam[]) {
   const request = (model: string) => llm.chat.completions.create({
     model,
@@ -35,7 +36,7 @@ async function startReply(messages: OpenAI.Chat.ChatCompletionMessageParam[]) {
   try {
     return await request(LLM_MODEL);
   } catch (error) {
-    if (LLM_FALLBACK_MODEL && isBusy(error)) {
+    if (LLM_FALLBACK_MODEL && shouldFallBack(error)) {
       console.log(`${LLM_MODEL} is unavailable (${error.status}), using ${LLM_FALLBACK_MODEL}`);
       return await request(LLM_FALLBACK_MODEL);
     }
@@ -57,6 +58,9 @@ function describeError(error: unknown) {
     }
     if (error.status === 404) {
       return "The AI model wasn't found. Check LLM_MODEL and LLM_FALLBACK_MODEL on the worker.";
+    }
+    if (error.status === 400) {
+      return "The AI model rejected the request. Check LLM_MAX_TOKENS on the worker (at most about 65000).";
     }
   }
   return "Something went wrong while building. Send your message again.";
